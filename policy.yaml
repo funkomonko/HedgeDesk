@@ -49,6 +49,6 @@ cost_and_landed_assumptions:
   default_freight_pct: 3.2
   domestic_gst_working_cap_adv_pct: 1.5
   usd_per_crustdata_credit: 0.05
-  run_cost_limit_credits: 25.0
+  run_cost_limit_credits: 40.0
   monthly_subscription_inr: 24999.0
   manual_advisor_fee_inr: 45000.0

@@ -47,8 +47,9 @@ def classify_maker_vs_trader(company: Dict[str, Any]) -> Dict[str, Any]:
         "wholesaler", "distributor", "trading", "traders", "import and export",
         "importer", "stockist", "dealer", "broker", "expo", "exhibition",
     ]
-    maker_hits = sum(1 for kw in maker_signals if kw in desc or kw in name)
-    trader_hits = sum(1 for kw in trader_signals if kw in desc or kw in name)
+    maker_found = [kw.strip() for kw in maker_signals if kw in desc or kw in name]
+    trader_found = [kw for kw in trader_signals if kw in desc or kw in name]
+    maker_hits, trader_hits = len(maker_found), len(trader_found)
 
     is_event = any(w in desc for w in ["trade show", "exhibition", "expo ", "conference"])
     if is_event:
@@ -56,10 +57,17 @@ def classify_maker_vs_trader(company: Dict[str, Any]) -> Dict[str, Any]:
         evidence_note = "Excluded: industry expo/association website, not a factory."
     elif (trader_hits >= 1 and maker_hits == 0) or (headcount < 40 and trader_hits > 0):
         kind = "TRADER"
-        evidence_note = f"Classified TRADER (not maker): trader keywords={trader_hits}, maker keywords={maker_hits}, headcount={headcount}. Excluded from break-even unless human includes."
+        evidence_note = (f"Classified TRADER: trader words {trader_found or 'none'}, maker words {maker_found or 'none'}, "
+                         f"{headcount} employees. Excluded unless a person includes it.")
+    elif maker_hits == 0:
+        # No maker evidence in the record: don't call it a maker, and don't draft an RFQ to it.
+        kind = "UNCLASSIFIED"
+        evidence_note = (f"Cannot verify maker or trader: no manufacturing or trading words in the Crustdata description; "
+                         f"{headcount} employees. Needs a person to check before any RFQ.")
     else:
         kind = "MAKER"
-        evidence_note = f"Verified MAKER: {headcount} employees, maker signals={maker_hits}, active Indian manufacturer."
+        evidence_note = (f"Likely maker: Crustdata description mentions {maker_found}; {headcount} employees. "
+                         f"Keyword check only, a person confirms before the RFQ goes out.")
 
     return {"kind": kind, "evidence_note": evidence_note, "headcount": headcount}
 
@@ -126,6 +134,7 @@ def find_makers(
     raw_cos = (res.get("data") or {}).get("companies") or []
     makers: List[Dict[str, Any]] = []
     traders: List[Dict[str, Any]] = []
+    unclassified: List[Dict[str, Any]] = []
     ev_ids: List[int] = [res["evidence_id"]] if res.get("evidence_id") else []
 
     for c in raw_cos:
@@ -166,10 +175,13 @@ def find_makers(
         ev_ids.append(ev_id)
         if cls["kind"] == "TRADER":
             traders.append(item)
+        elif cls["kind"] == "UNCLASSIFIED":
+            item["rfq_draft"] = ""
+            unclassified.append(item)
         else:
             makers.append(item)
 
-    if not makers and not traders:
+    if not makers and not traders and not unclassified:
         return {
             "status": "NO_DOMESTIC_CANDIDATE",
             "part_description": part_description,
@@ -182,12 +194,13 @@ def find_makers(
         }
 
     return {
-        "status": "SOURCED" if makers else "ONLY_TRADERS_FOUND",
+        "status": "SOURCED" if makers else ("ONLY_TRADERS_FOUND" if traders else "NEEDS_REVIEW"),
         "part_description": part_description,
         "landed_import_inr": landed,
         "break_even_inr": be_price,
         "price_verdict": "cannot verify, RFQ drafted",
         "makers": makers,
         "traders_excluded": traders,
+        "unclassified": unclassified,
         "evidence_ids": ev_ids,
     }

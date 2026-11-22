@@ -230,6 +230,7 @@
         <div class="input-wrap"><svg class="i"><use href="#i-message"/></svg><input type="text" id="plainAsk" placeholder="Plain-English request" /></div>
         <button onclick="runPlainAsk()"><svg class="i"><use href="#i-send"/></svg>Run Unseen Request</button>
       </div>
+      <div id="askAnswer" class="card" style="display:none;margin-top:10px;"></div>
 
       <div class="toggle-row">
         <span class="eyebrow"><svg class="i sm"><use href="#i-flask"/></svg>Simulate</span>
@@ -238,7 +239,7 @@
         <label><input type="checkbox" id="chkNonsense" /> Case 20: Corrupted 40% Feed (sanity reject)</label>
         <label><input type="checkbox" id="chkDisagree" /> Case 22: Sources Disagree Flag</label>
         <label><input type="checkbox" id="chk402" /> Case 26: Simulate 402 Credits Out</label>
-        <label>Cost Limit: <input type="number" id="costLimit" value="25" min="0.1" step="0.5" /> cr</label>
+        <label>Cost Limit: <input type="number" id="costLimit" value="40" min="0.1" step="0.5" /> cr</label>
       </div>
 
       <div id="policyDrawer" class="policy-drawer">
@@ -246,7 +247,7 @@
         <div><label>Bank Spread (bps)</label><input type="number" step="1" id="polSpread" value="18" /></div>
         <div><label>Customs Duty (%)</label><input type="number" step="0.5" id="polDuty" value="7.5" /></div>
         <div><label>Dual Approval &gt; (₹)</label><input type="number" step="1000000" id="polDual" value="10000000" /></div>
-        <div><label>Run Budget (credits)</label><input type="number" step="1" id="polBudget" value="25" /></div>
+        <div><label>Run Budget (credits)</label><input type="number" step="1" id="polBudget" value="40" /></div>
         <div style="display:flex;align-items:flex-end;"><button class="success" style="width:100%;justify-content:center;" onclick="savePolicy()">Save Parameters</button></div>
       </div>
     </section>
@@ -330,6 +331,10 @@
     </section>
 
     <section id="tEv" class="tab-panel">
+      <div class="card" style="margin-bottom:12px;">
+        <h2><span>Personal data held</span><button onclick="purgePersonal()">Purge personal data</button></h2>
+        <div class="small" id="privacyLine">Loading…</div>
+      </div>
       <div class="grid-2">
         <div class="card">
           <h2>Source Evidence Ledger</h2>
@@ -368,7 +373,8 @@
       document.getElementById("polSpread").value = p.cost_and_landed_assumptions?.bank_spread_bps ?? 18;
       document.getElementById("polDuty").value = p.cost_and_landed_assumptions?.default_duty_pct ?? 7.5;
       document.getElementById("polDual").value = p.hard_rules?.dual_approval_threshold_inr ?? 10000000;
-      document.getElementById("polBudget").value = p.cost_and_landed_assumptions?.run_cost_limit_credits ?? 25;
+      document.getElementById("polBudget").value = p.cost_and_landed_assumptions?.run_cost_limit_credits ?? 40;
+      document.getElementById("costLimit").value = p.cost_and_landed_assumptions?.run_cost_limit_credits ?? 40;
     }
 
     async function loadLatestRun() {
@@ -408,7 +414,7 @@
             simulate_fx_nonsense: document.getElementById("chkNonsense").checked,
             simulate_fx_disagreement: document.getElementById("chkDisagree").checked,
             simulate_402: document.getElementById("chk402").checked,
-            cost_limit_credits: parseFloat(document.getElementById("costLimit").value || "25"),
+            cost_limit_credits: parseFloat(document.getElementById("costLimit").value) || null,
           })
         });
         const d = await res.json().catch(() => ({}));
@@ -437,10 +443,22 @@
       }
     }
 
-    function runPlainAsk() {
+    async function runPlainAsk() {
       const txt = document.getElementById("plainAsk").value.trim();
       if (!txt) return alert("Type an invoice or request first.");
-      runDemo("parse_text", txt);
+      const box = document.getElementById("askAnswer");
+      const r = await fetch("/api/ask", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ question: txt, run_id: currentRunId }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return alert(d.detail || "Request failed");
+      if (d.kind === "invoice") { box.style.display = "none"; return runDemo("parse_text", txt); }
+      box.style.display = "block";
+      box.innerHTML = `<div class="small"><strong>Answer from run ${d.run_id || ''}</strong></div>` +
+        (d.lines && d.lines.length
+          ? d.lines.map(l => `<div class="small" style="margin-top:4px;">${l.text} ${(l.evidence_ids||[]).map(id => `<span class="ev-link" onclick="inspectEv(${id})">[ev#${id}]</span>`).join(" ")}</div>`).join("")
+          : `<div class="small">${d.text}</div>`);
     }
 
     function inspectEv(id) {
@@ -470,7 +488,7 @@
       document.getElementById("kFwdCost").textContent = `Fwd carry: ₹${Number(s.total_fwd_cost_inr||0).toLocaleString("en-IN")}`;
       document.getElementById("kHolds").textContent = holds;
       document.getElementById("kCost").textContent = `₹${Number(s.measured_job_cost_inr||0).toFixed(2)}`;
-      document.getElementById("kCredits").textContent = `${s.measured_credits||0} / ${s.run_cost_limit_credits ?? 25} credits` + (s.run_time_s!=null ? ` · ${Number(s.run_time_s).toFixed(1)}s / ${s.run_time_limit_s}s` : '');
+      document.getElementById("kCredits").textContent = `${s.measured_credits||0} / ${s.run_cost_limit_credits ?? 40} credits` + (s.run_time_s!=null ? ` · ${Number(s.run_time_s).toFixed(1)}s / ${s.run_time_limit_s}s` : '');
       document.getElementById("kMargin").textContent = `vs ₹45k advisor (${s.gross_margin_pct||99}% GM)`;
       document.getElementById("jobCostBadge").textContent = `Job Cost: ₹${Number(s.measured_job_cost_inr||0).toFixed(2)}`;
 
@@ -509,30 +527,37 @@
         const makers = (alt.makers || []).map(mk => `
           <div class="alt-maker">
             <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;">
-              <div><strong>${mk.name}</strong> ${pill('MAKER · '+mk.headcount+' emp','green')} <span class="small mono">ID:${mk.crustdata_company_id} · ${mk.hq}</span></div>
+              <div><strong>${mk.name}</strong> ${pill('LIKELY MAKER · '+mk.headcount+' emp','green')} <span class="small mono">ID:${mk.crustdata_company_id} · ${mk.hq}</span></div>
               <div>${pill(mk.price_status,'amber')} <span class="mono small">Target &lt;= ₹${Number(alt.break_even_inr).toLocaleString("en-IN")}/unit</span></div>
             </div>
             <div class="small" style="margin:6px 0;">${mk.classification_evidence}</div>
             <details><summary>View Drafted RFQ Email (Team Inbox)</summary><pre class="rfq">${mk.rfq_draft}</pre></details>
           </div>`).join("");
-        const traders = (alt.traders_excluded || []).map(tr => `<div class="small" style="margin-top:6px;">${pill('TRADER EXCLUDED','red')} <strong>${tr.name}</strong> — ${tr.classification_evidence}</div>`).join("");
+        const traders = (alt.traders_excluded || []).map(tr => `<div class="small" style="margin-top:6px;">${pill('TRADER EXCLUDED','red')} <strong>${tr.name}</strong> — ${tr.classification_evidence}</div>`).join("")
+          + (alt.unclassified || []).map(u => `<div class="small" style="margin-top:6px;">${pill('NEEDS REVIEW','amber')} <strong>${u.name}</strong> — ${u.classification_evidence}</div>`).join("");
         return `<div class="card"><h2><span>${invId} — ${alt.part_description}</span>${pill('Domestic Break-Even <= ₹'+Number(alt.break_even_inr).toLocaleString('en-IN')+'/unit','green')}</h2><div class="small">Hedged Landed Import Cost: <strong class="mono">₹${Number(alt.landed_import_inr).toLocaleString('en-IN')}/unit</strong></div>${makers}${traders}</div>`;
       }).join("") || '<div class="card small">No hedged import invoices eligible for domestic substitution in this run.</div>';
 
       renderOutbox(d.outbox || []);
       renderEvidence(d.evidence || []);
+      loadPrivacy();
       renderCost(d.cost_ledger);
     }
 
     function renderOutbox(items) {
       document.getElementById("tbOut").innerHTML = items.map(o => {
         const p = o.payload_obj || {};
-        const col = (o.state==='paid'||o.state==='sent') ? 'green' : (o.state==='held' ? 'red' : 'blue');
+        const col = (o.state==='paid'||o.state==='sent') ? 'green' : ((o.state==='held'||o.state==='rejected') ? 'red' : 'blue');
         let btns = `<span class="small">Blocked (${p.held_reason||'Held'})</span>`;
+        const rejBtn = `<button onclick="rejectOutbox('${o.idem_key}')">Reject</button>`;
         if (o.state === "drafted") {
-          btns = `<button class="primary" onclick="actOutbox('${o.idem_key}')">Approve &amp; Execute</button>`;
+          btns = `<button class="primary" onclick="actOutbox('${o.idem_key}')">Approve &amp; Execute</button> ${rejBtn}`;
         } else if (o.state === "approved") {
-          btns = `<button class="success" onclick="actOutbox('${o.idem_key}')">Complete Execution</button>`;
+          btns = `<button class="success" onclick="actOutbox('${o.idem_key}')">Complete Execution</button> ${rejBtn}`;
+        } else if (o.state === "held") {
+          btns = `<span class="small">Blocked (${p.held_reason||'Held'})</span><br/>${rejBtn}`;
+        } else if (o.state === "rejected") {
+          btns = `<span class="small">Rejected by ${p.rejected_by} (${(p.rejected_at||'').replace('T',' ').replace('Z',' UTC')}): ${p.rejected_reason}</span>`;
         } else if (o.state === "paid" || o.state === "sent") {
           btns = `<span class="pill green">Executed Once</span>`;
         }
@@ -558,6 +583,46 @@
       if (d.already_executed) {
         alert(`IDEMPOTENCY PROTECTED: ${d.external_ref} was already executed. Zero duplicate payout.`);
       }
+      if (currentRunId) {
+        const ob = await (await fetch(`/api/outbox/${currentRunId}`)).json();
+        renderOutbox(ob.outbox || []);
+      }
+    }
+
+    async function loadPrivacy() {
+      try {
+        const p = await (await fetch("/api/privacy")).json();
+        document.getElementById("privacyLine").textContent =
+          `${p.bank_change_contacts_held} bank-change contact values, ${p.person_search_replies_cached} cached Person Search replies (kept fields: ${p.fields_kept_from_person_search.join(", ")}). Used only for: ${p.used_for}`;
+      } catch (e) {}
+    }
+
+    async function purgePersonal() {
+      const dom = prompt("Supplier domain to purge (leave empty for all suppliers):", "");
+      if (dom === null) return;
+      const who = prompt("Requested by (recorded):", "");
+      if (!who) return;
+      const r = await fetch("/api/privacy/purge", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ supplier_domain: dom.trim() || null, requested_by: who }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return alert(d.detail || "Purge failed");
+      alert(`Purged ${d.purged_values} personal values. Audit record: evidence #${d.audit_evidence_id}.`);
+      loadPrivacy();
+    }
+
+    async function rejectOutbox(key) {
+      const who = prompt("Your name and role (recorded with the rejection):", "CFO");
+      if (!who) return;
+      const reason = prompt("Reason for rejecting (recorded):");
+      if (!reason) return;
+      const r = await fetch(`/api/outbox/${key}/reject`, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ rejected_by: who, reason }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return alert(d.detail || "Reject failed");
       if (currentRunId) {
         const ob = await (await fetch(`/api/outbox/${currentRunId}`)).json();
         renderOutbox(ob.outbox || []);

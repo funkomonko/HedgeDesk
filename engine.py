@@ -225,6 +225,9 @@ def run_pipeline(
             # 2. Supplier Payment proposal (Razorpay test mode — masked bank metadata)
             pkey = make_payment_idem_key(inv_id, inv["amount_usd"], inv["due_date"] or "missing")
             pay_hold = hold_reason
+            if not pay_hold and inv.get("doc_type") == "forecast":
+                # A PO is a forecast: the forward can hedge it, but there is no supplier invoice to pay yet.
+                pay_hold = "Forecast PO, no supplier invoice yet: payment held until the invoice arrives. The forward hedge is unaffected."
             propose(
                 run_id=run_id,
                 kind="payment",

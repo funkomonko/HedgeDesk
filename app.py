@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from actions import approve, execute, get_outbox
+from actions import approve, execute, get_outbox, reject
 from backtest import metrics, replay
 from book import load_invoices
 from engine import run_pipeline
@@ -47,7 +47,7 @@ class RunReq(BaseModel):
     simulate_fx_nonsense: bool = False
     simulate_fx_disagreement: bool = False
     simulate_402: bool = False
-    cost_limit_credits: float = 25.0
+    cost_limit_credits: Optional[float] = None  # None -> policy.yaml run_cost_limit_credits
 
 
 class OutboxActionReq(BaseModel):
@@ -196,6 +196,64 @@ def approve_and_execute(idem_key: str, req: OutboxActionReq):
     try:
         approve(idem_key, approver=req.approver, second_approver=req.second_approver)
         return execute(idem_key)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+
+
+class AskReq(BaseModel):
+    question: str
+    run_id: Optional[str] = None
+
+
+@app.post("/api/ask")
+def ask_question(req: AskReq):
+    """
+    A typed request that states an amount is a new invoice (the UI then runs it). Anything else is a
+    question about the current batch, answered from that run's decisions and evidence (ask.py).
+    """
+    import ask
+    amt, _ = _extract_amount(req.question)
+    if amt:
+        return {"kind": "invoice"}
+    run_id = req.run_id
+    if not run_id:
+        with db_conn() as conn:
+            row = conn.execute("SELECT run_id FROM steps WHERE step = '0_request' ORDER BY rowid DESC LIMIT 1").fetchone()
+        if not row:
+            return {"kind": "answer", "answered": False, "lines": [],
+                    "text": "No batch loaded yet. Run the demo or upload a CSV, then ask about it."}
+        run_id = row["run_id"]
+    res = ask.answer(req.question, resume_run(run_id))
+    res["kind"] = "answer"
+    return res
+
+
+class PurgeReq(BaseModel):
+    supplier_domain: Optional[str] = None
+    requested_by: str = ""
+
+
+@app.get("/api/privacy")
+def privacy_summary():
+    import privacy
+    return privacy.summary()
+
+
+@app.post("/api/privacy/purge")
+def privacy_purge(req: PurgeReq):
+    import privacy
+    return privacy.purge(req.supplier_domain, req.requested_by)
+
+
+class RejectReq(BaseModel):
+    rejected_by: str
+    reason: str
+
+
+@app.post("/api/outbox/{idem_key}/reject")
+def reject_action(idem_key: str, req: RejectReq):
+    try:
+        return reject(idem_key, req.rejected_by, req.reason)
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
 

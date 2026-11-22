@@ -1,0 +1,26 @@
+endpoint,credits,inr_cost,at
+/company/identify,0.2,0.93,2026-11-22T14:40:14Z
+/company/enrich,4.0,18.54,2026-11-22T14:40:17Z
+/company/identify (cache),0.0,0.0,2026-11-22T14:40:17Z
+/company/enrich (cache),0.0,0.0,2026-11-22T14:40:17Z
+/company/identify,0.2,0.93,2026-11-22T14:40:19Z
+/company/identify,0.2,0.93,2026-11-22T14:40:20Z
+/company/enrich,2.0,9.27,2026-11-22T14:40:22Z
+/company/identify,0.2,0.93,2026-11-22T14:40:23Z
+/company/enrich,4.0,18.54,2026-11-22T14:40:26Z
+/company/identify,0.2,0.93,2026-11-22T14:40:27Z
+/company/enrich,2.0,9.27,2026-11-22T14:40:28Z
+/company/identify (HTTP 429),0.0,0.0,2026-11-22T14:40:29Z
+/company/identify (HTTP 429),0.0,0.0,2026-11-22T14:40:42Z
+/company/identify (HTTP 429),0.0,0.0,2026-11-22T14:40:55Z
+/company/identify (HTTP 429),0.0,0.0,2026-11-22T14:41:08Z
+/company/identify (HTTP 429),0.0,0.0,2026-11-22T14:41:08Z
+/company/identify,0.2,0.93,2026-11-22T14:41:15Z
+/company/enrich,4.0,18.54,2026-11-22T14:41:18Z
+/company/identify,0.2,0.93,2026-11-22T14:41:19Z
+/company/enrich,2.0,9.27,2026-11-22T14:41:21Z
+/person/search,0.0,0.0,2026-11-22T14:41:22Z
+fx_official_reference (cache),0.0,0.0,2026-11-22T14:41:22Z
+/company/search,2.15,9.96,2026-11-22T14:41:24Z
+/company/search,2.15,9.96,2026-11-22T14:41:26Z
+/company/search,2.15,9.96,2026-11-22T14:41:28Z

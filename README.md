@@ -19,6 +19,7 @@ The people who do this job today are an in-house treasury analyst, an FX advisor
 ## Input
 
 - A list of open invoices and purchase orders, as a CSV (see [`sample_invoices.csv`](sample_invoices.csv)) or a plain-English request typed into the web app, e.g. *"We owe SKF GmbH (skf.com) USD 200,000 for 400 bearings due 2027-01-21"*. The parser reads amounts written as "$200k", "200,000 USD", "₹1.2 crore" or "Rs 50 lakh", "500 bearings at $400 each", and dates like "21 Jan 2027" or "21/01/2027". It doesn't guess: an invoice is held, with the reason, if it has no amount, no supplier or no currency, if it gives two different amounts, if the amount is negative (reads as a credit note), or if the date is ambiguous (03/04/2027). If the quantity is missing, the per-unit break-even is skipped. CSV headers such as "Vendor", "Qty" or "Due Date" are mapped to our column names.
+- A question about the loaded batch, typed into the same box, e.g. *"Plan hedges for this month's payables and tell me if any should be sourced locally"*. If the text states no amount it is treated as a question and answered from the current run's decisions, with evidence IDs on each line (`ask.py`). It covers the hedge plan, holds and reasons, local sourcing, approvals, duplicates and run cost; anything else gets "cannot answer" and a list of what can be asked.
 - The company's hedging policy in [`policy.yaml`](policy.yaml): allowed hedge ranges by tenor, VaR confidence, the approval threshold, freshness and sanity limits, and the per-run limits (25 credits, 120 seconds). The policy is part of each run's ID, so an edited policy re-decides the same invoices instead of replaying the old result.
 
 ## Finished result
@@ -30,7 +31,7 @@ For each invoice, one of two things:
 
 For the larger invoices it also returns a list of Indian manufacturers (found on Crustdata, with traders filtered out), the landed cost of importing the part, the domestic price that would beat it, and a draft RFQ. We don't know any domestic supplier's actual price, so the output always says "cannot verify, RFQ drafted" rather than guessing one.
 
-Payments, forward bookings and RFQs only go out after a person clicks Approve. Anything above ₹1 crore needs two approvers.
+Payments, forward bookings and RFQs only go out after a person clicks Approve. Anything above ₹1 crore needs two approvers. A person can also reject any action that hasn't executed, with their name and a reason; the rejection is kept on the row, and re-running the same invoices doesn't bring the action back. Payments against a forecast PO are held until the supplier's invoice arrives.
 
 ## Pass mark
 
@@ -40,7 +41,7 @@ A run passes if:
 - no invoice is hedged or paid twice, including after the process is killed and restarted;
 - no rate, price or company fact appears without a source, and anything we can't source says "cannot verify".
 
-[`test_28_cases.py`](test_28_cases.py) checks this against 28 edge cases (duplicates, lookalikes, bad and stale market data, crashes mid-payment, out-of-credit errors, moved due dates and so on). All 28 pass; the latest run is in [`TESTS.md`](TESTS.md). [`test_hardening.py`](test_hardening.py) adds 31 checks on input parsing, holds on missing or odd fields, the live staleness gate, the run time limit and the premium thresholds.
+[`test_28_cases.py`](test_28_cases.py) checks this against 28 edge cases (duplicates, lookalikes, bad and stale market data, crashes mid-payment, out-of-credit errors, moved due dates and so on). All 28 pass; the latest run is in [`TESTS.md`](TESTS.md). [`test_hardening.py`](test_hardening.py) adds 38 checks on input parsing, holds on missing or odd fields, the live staleness gate, the run time limit, the premium thresholds, rejecting an action, personal-data purge and answering questions.
 
 ## Data sources
 
@@ -52,7 +53,11 @@ A run passes if:
 | Crustdata `/company/search` | Find Indian manufacturers of the same part (40+ employees) | `alternatives.py` |
 | Frankfurter (ECB reference rates) `api.frankfurter.app` | Live USD/INR spot, and the daily history used for volatility and the backtest | `sources.py` |
 
-All calls go through `sources.py`, which caches responses, retries on 429 and 5xx, stops cleanly on 402, checks the run budget before each paid call, and writes an evidence row (source, field, value, record date) for every fact.
+All calls go through `sources.py`, which caches responses, retries on 429 and 5xx, stops cleanly on 402, checks the run's credit and time limits before each live call, and writes an evidence row (source, field, value, record date) for every fact. The credit check assumes the next call costs the most that endpoint has ever cost us, so one expensive call can't push a run over its limit.
+
+**Measured cost per job.** A cold run of the 9-invoice demo with no cached replies, on 22 Nov 2026, made 25 Crustdata calls for 25.85 credits, ₹119.82 at $0.05 a credit, in 74.9 seconds. The per-call ledger is in [`evidence/cold_run_ledger_2026-11-22.csv`](evidence/cold_run_ledger_2026-11-22.csv). Enrich costs 2–4 credits and company search 2.15; identify is 0.2. Re-running from cache costs nothing. The default limit is 40 credits per run.
+
+**Personal data.** The only personal data is on bank-detail change requests: the sender's name and email, and the Person Search reply used to check them. That reply is cut to name, role and employer before it is stored. `privacy.py` reports what is held and purges it per supplier domain or for everything (the Evidence tab has a button), leaving an audit row with counts only.
 
 What isn't live yet:
 

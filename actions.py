@@ -81,6 +81,8 @@ def approve(
             raise ValueError(f"Outbox idem_key not found: {idem_key}")
         if row["state"] == "held":
             raise ValueError(f"Action {idem_key} is HELD and cannot be approved.")
+        if row["state"] == "rejected":
+            raise ValueError(f"Action {idem_key} was rejected and cannot be approved.")
         if row["state"] in {"sent", "paid"}:
             d = dict(row)
             d["already_executed"] = True
@@ -100,6 +102,34 @@ def approve(
             "UPDATE outbox SET state = 'approved', approved_by = ?, second_approver = ? WHERE idem_key = ?",
             (approver, second_approver, idem_key),
         )
+        return dict(conn.execute("SELECT * FROM outbox WHERE idem_key = ?", (idem_key,)).fetchone())
+
+
+def reject(idem_key: str, rejected_by: str, reason: str) -> Dict[str, Any]:
+    """
+    A person refuses a proposed action. Allowed until it has executed; the reason, who and when are
+    kept on the row. Because outbox keys come from the action's content, re-running the same invoices
+    finds this row again, so a rejected payment stays rejected instead of being re-proposed.
+    """
+    reason = (reason or "").strip()
+    who = (rejected_by or "").strip()
+    if not reason or not who:
+        raise ValueError("A rejection needs the reviewer's name and a reason.")
+    with db_conn() as conn:
+        row = conn.execute("SELECT * FROM outbox WHERE idem_key = ?", (idem_key,)).fetchone()
+        if not row:
+            raise ValueError(f"Outbox idem_key not found: {idem_key}")
+        if row["state"] in {"sent", "paid"}:
+            raise ValueError(f"Action {idem_key} already executed ({row['external_ref']}); it can't be rejected now.")
+        if row["state"] == "rejected":
+            d = dict(row)
+            d["already_rejected"] = True
+            return d
+        payload = json.loads(row["payload"])
+        payload.update({"rejected_by": who, "rejected_reason": reason, "rejected_at": utc_now(),
+                        "state_before_rejection": row["state"]})
+        conn.execute("UPDATE outbox SET state = 'rejected', payload = ? WHERE idem_key = ?",
+                     (json.dumps(payload), idem_key))
         return dict(conn.execute("SELECT * FROM outbox WHERE idem_key = ?", (idem_key,)).fetchone())
 
 
@@ -151,6 +181,8 @@ def execute(idem_key: str, simulate_kill_before_save: bool = False) -> Dict[str,
             return d
         if d["state"] == "held":
             raise ValueError("Cannot execute a HELD action.")
+        if d["state"] == "rejected":
+            raise ValueError("Cannot execute a rejected action.")
         if d["state"] != "approved":
             raise ValueError(f"Action {idem_key} must be approved first (current state={d['state']}).")
 

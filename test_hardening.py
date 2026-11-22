@@ -5,7 +5,8 @@ test_28_cases.py, which stays the report for the 28 context-doc cases.
 Covers: typed-request parsing (currency after the number, written dates, per-unit prices,
 two amounts), CSV robustness (quantity "1,200", "7.5%", blank currency, negative amount,
 ambiguous dates, unknown doc type), live FX staleness gate, no guessed INR values when the
-rate can't be verified, per-run time limit, and the premium sensitivity on each hedge.
+rate can't be verified, per-run time limit, the premium sensitivity on each hedge, rejecting an
+action, and personal-data minimising and purge.
 Run: .venv/bin/python test_hardening.py
 """
 import uuid
@@ -140,6 +141,66 @@ c = crust("/company/identify", {"names": [f"Never Cached Co {tag}"], "count": 1}
 check("time limit stops new live calls", (not c["ok"]) and c["error"] == "TIME_LIMIT_REACHED", c.get("message", ""))
 c2 = crust("/company/identify", {"domains": ["skf.com"]}, run_id=rid)
 check("cached replies still served after time limit", c2["ok"] and c2.get("cache_hit"))
+
+# ── Reject, privacy ───────────────────────────────────────────────────────────
+from actions import reject, execute
+rk = f"h-rej-{tag}"
+propose(f"h-rejrun-{tag}", "payment", f"R-{tag}", rk, {"title": "t", "inr_value": 1000.0})
+rej = reject(rk, "CFO", "Supplier asked us to wait for a revised invoice")
+blocked = False
+try:
+    approve(rk, approver="CFO")
+except ValueError:
+    blocked = True
+again = propose(f"h-rejrun2-{tag}", "payment", f"R-{tag}", rk, {"title": "t", "inr_value": 1000.0})
+check("reject records who/why, blocks approval, survives re-proposal", rej["state"] == "rejected" and blocked and again["state"] == "rejected")
+try:
+    reject(rk, "", "")
+    check("reject needs name and reason", False)
+except ValueError:
+    check("reject needs name and reason", True)
+
+from sources import db_conn, minimize_personal_data, add_evidence
+import json as _json, privacy
+slim = minimize_personal_data("/person/search", {"profiles": [{"basic_profile": {"name": "A B", "emails": ["a@b.com"], "location": "x"},
+                                                                 "experience": {"employment_details": {"current": [{"title": "AP lead", "company_name": "Zebra"}]}}}]})
+check("Person Search reply cut to name/role/employer", list(slim["profiles"][0].keys()) == ["name", "role", "employer"] and "a@b.com" not in _json.dumps(slim))
+pdom = f"purge-{tag}.invalid"
+sender, email = f"Priya Test{tag}", f"priya.{tag}@gmail.com"
+with db_conn() as conn:
+    conn.execute("INSERT OR REPLACE INTO invoices (invoice_id, run_id, supplier_raw, supplier_id, amount_usd, due_date, doc_type, status, dup_of, raw_json) "
+                 "VALUES (?, ?, 'X', NULL, 1, '2027-01-01', 'confirmed', 'ACTIVE', NULL, ?)",
+                 (f"P-{tag}", f"h-purge-{tag}", _json.dumps({"supplier_domain": pdom, "bank_change_sender": sender, "bank_change_email": email})))
+ev = add_evidence(f"h-purge-{tag}", "https://api.crustdata.com/person/search", "profiles", f"Bank-change sender '{sender}' ({email})", "2026-11-22")
+out = privacy.purge(pdom, requested_by="test")
+with db_conn() as conn:
+    left = conn.execute("SELECT COUNT(*) FROM evidence WHERE value LIKE ?", (f"%{email}%",)).fetchone()[0] + \
+           conn.execute("SELECT COUNT(*) FROM invoices WHERE raw_json LIKE ?", (f"%{sender}%",)).fetchone()[0]
+check("purge removes a supplier's bank-change contact everywhere", out["purged_values"] >= 2 and left == 0, str(out["rows_changed"]))
+
+# ── Questions about a batch (ask.py), on a hand-built run ─────────────────────
+import ask
+fake = {
+    "run_id": "fake", "summary": {"var_confidence_pct": 95},
+    "book": {"invoices": [{"invoice_id": "A1", "supplier_raw": "SKF GmbH", "supplier": {"legal_name": "SKF Group"}},
+                          {"invoice_id": "A2", "supplier_raw": "Carrier Global", "supplier": {}}]},
+    "decisions": [
+        {"invoice_id": "A1", "action": "HEDGE_FORWARD", "ratio": 0.75, "hedged_usd": 150000, "forward_rate": 93.2,
+         "policy_clause": "1_to_3_months.confirmed", "var_95_inr": 552796, "evidence_ids": [1, 2], "reason": "r"},
+        {"invoice_id": "A2", "action": "HOLD_CANNOT_VERIFY_SUPPLIER", "ratio": 0, "hedged_usd": 0, "forward_rate": None,
+         "policy_clause": "KYB.LOOKALIKE_HOLD", "var_95_inr": 0, "evidence_ids": [3], "reason": "Lookalike name."},
+    ],
+    "alternatives": {"A1": {"status": "SOURCED", "break_even_inr": 50754.34, "landed_import_inr": 51527.25,
+                            "makers": [{"name": "ARB Bearings"}], "evidence_ids": [4]}},
+    "outbox": [], "cost_ledger": {"call_count": 3, "total_credits": 0.4, "total_inr_cost": 1.85},
+}
+a = ask.answer("Plan hedges for this month's payables and tell me if any should be sourced locally", fake)
+check("ask: hedge plan + local sourcing, with evidence IDs", a["intents"] == ["hedge", "local"] and "$150,000" in a["text"]
+      and "₹50,754/unit" in a["text"] and any(l["evidence_ids"] for l in a["lines"]))
+a = ask.answer("what about Carrier?", fake)
+check("ask: narrows to a named supplier", a["scope"] == ["A2"] and "Lookalike" in a["text"])
+a = ask.answer("what's the weather in Pune", fake)
+check("ask: unknown question -> cannot answer, no guess", not a["answered"] and a["text"].startswith("Cannot answer"))
 
 passed = sum(1 for _, ok in results if ok)
 print(f"\nHARDENING CHECKS: {passed}/{len(results)} passed")

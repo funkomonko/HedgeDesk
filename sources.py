@@ -328,6 +328,51 @@ def _target_holidays(year: int):
             date(year, 5, 1), date(year, 12, 25), date(year, 12, 26)}
 
 
+def _first(*vals: Any) -> Any:
+    for v in vals:
+        if v not in (None, "", [], {}):
+            return v
+    return None
+
+
+def minimize_personal_data(endpoint: str, data: Any) -> Any:
+    """
+    People data is used for one check only (does the bank-change sender work at the supplier?), so a
+    Person Search reply is cut down to name, role and employer before it is cached or used. Nothing
+    else from a person's profile is stored. Other endpoints return company data and pass through.
+    """
+    if "/person/" not in endpoint or not isinstance(data, dict):
+        return data
+    slim = []
+    for p in data.get("profiles") or []:
+        bp = p.get("basic_profile") or {}
+        emp = (p.get("experience") or {}).get("employment_details") or {}
+        cur = emp.get("current") if isinstance(emp, dict) else None
+        cur0 = cur[0] if isinstance(cur, list) and cur else (cur if isinstance(cur, dict) else {})
+        slim.append({
+            "name": _first(bp.get("name"), p.get("name")),
+            "role": _first(cur0.get("title"), bp.get("current_title"), bp.get("headline"), p.get("title")),
+            "employer": _first(cur0.get("company_name"), cur0.get("name"), p.get("current_company")),
+        })
+    return {"profiles": slim, "total_count": data.get("total_count"), "minimized": True}
+
+
+# Measured on a cold run of the 9-invoice demo (22 Nov 2026): enrich 2-4, company search 2.15, identify 0.2.
+_CREDIT_FALLBACK = {"/company/enrich": 4.0, "/company/search": 2.2, "/person/search": 1.0, "/company/identify": 0.2}
+
+
+def expected_credits(endpoint: str, db_path: Path = DB_FILE) -> float:
+    """What the next call to this endpoint may cost: the most it has ever cost us (cost_ledger), else the
+    measured fallback. Using the maximum keeps a run from crossing its credit limit on one expensive call."""
+    try:
+        with db_conn(db_path) as conn:
+            row = conn.execute("SELECT MAX(credits) FROM cost_ledger WHERE endpoint = ?", (endpoint,)).fetchone()
+        seen = float(row[0]) if row and row[0] is not None else 0.0
+    except Exception:
+        seen = 0.0
+    return max(seen, _CREDIT_FALLBACK.get(endpoint, 1.0))
+
+
 def _credits_from_headers(resp: Any) -> float:
     try:
         return float(resp.headers.get("x-credits-used") or 0.0)
@@ -416,7 +461,7 @@ def crust(
 
     # 2b. Enforce run cost limit BEFORE live call (Case 28)
     summary = get_run_cost_summary(run_id, db_path)
-    est_credits = 2.0 if "enrich" in endpoint else (1.0 if "web" in endpoint else 0.2)
+    est_credits = expected_credits(endpoint, db_path)
     if summary["total_credits"] + est_credits > limit_cr:
         ev_id = add_evidence(
             run_id=run_id,
@@ -502,7 +547,7 @@ def crust(
             if resp.status_code >= 400:
                 return {"ok": False, "status_code": resp.status_code, "error": resp.text[:300]}
 
-            data = resp.json()
+            data = minimize_personal_data(endpoint, resp.json())
             cr_used = float(resp.headers.get("x-credits-used", est_credits) or 0.0)
             req_id = resp.headers.get("x-request-id", "")
             inr_cost = round(cr_used * usd_per_cr * fx_for_cost, 2)

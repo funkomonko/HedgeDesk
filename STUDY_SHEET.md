@@ -220,9 +220,9 @@ Real ECB USD/INR daily rates, 30 Apr 2025 → 20 Nov 2026 (₹84.53 → ₹92.68
 - **Buyer:** CFO or finance head of a mid-size Indian importer (bearings, electronics, machinery, chemicals) with regular USD payables. Our client is a 3PL importer, "BharatPrecision Components & 3PL Imports".
 - **Who does it today:** a junior treasury analyst, an FX advisory firm on retainer (we use ₹45,000 a cycle), or the bank RM, who is conflicted because they earn on the spread.
 - **Our price:** ₹24,999 a month per company.
-- **Cost per job:** every Crustdata call is written to `cost_ledger` (credits × $0.05 × the latest ECB USD/INR we fetched). A re-run from cache costs ₹0. A cold run of the 9-row demo is roughly 15–17 credits by the code's own estimates (enrich ≈ 2 credits, other calls ≈ 0.2), which is **about ₹70–80**. If you can, do one cold run before the finals so you can quote a measured number, not an estimate.
+- **Cost per job (measured):** a cold run of the 9-invoice demo on 22 Nov 2026, with no cached replies, made 25 Crustdata calls for **25.85 credits = ₹119.82**, in 74.9 s. Ledger: `evidence/cold_run_ledger_2026-11-22.csv`. Enrich is the expensive call (2–4 credits), company search 2.15, identify 0.2. A re-run from cache costs ₹0. Per invoice that's about ₹13 cold.
 - **Value:** in the backtest the worst month dropped from ₹3.35 L to ₹1.38 L per $100k payable. For an importer paying $1M a month, that's about ₹20 L less loss in the worst month, against a ₹25k subscription.
-- **Gross margin:** above 99% on API costs. Hosting and support aren't counted, so say "API cost" rather than "all-in".
+- **Gross margin:** about 99.5% on API costs even if every monthly run were cold (₹120 against ₹24,999). Hosting and support aren't counted, so say "API cost" rather than "all-in".
 
 ---
 
@@ -236,7 +236,7 @@ Most likely requests, and where to change them:
 | New output field on a decision | Add it to the dict in `policy.decide()` (around line 389) and a column in `static/index.html` |
 | New hold rule | Add a flag in `book.build_book()` and a branch in `policy.decide()` |
 | New currency in scope | `currency_scope` in policy.yaml, plus the `ccy != "USD"` check in `book.py:429` (and FX data for that pair) |
-| Lower cost limit | `run_cost_limit_credits` in policy.yaml, or the Cost Limit box in the UI |
+| Lower cost limit | `run_cost_limit_credits` in policy.yaml (default 40), or the Cost Limit box in the UI |
 | Lower time limit | `run_time_limit_seconds` in policy.yaml (hard_rules) |
 | VaR at 99% instead of 95% | `var_confidence_pct: 99` under `decision_rule` in policy.yaml; the KPI label follows |
 | Default duty or freight | `default_duty_pct` / `default_freight_pct` in policy.yaml, or the drawer (used when a row has no duty) |
@@ -253,10 +253,10 @@ Ordered by how much damage they could do.
 1. **The forward premia are not fetched from FBIL/RBI.** `sources.fetch_fx()` uses fixed values (1M 2.15%, 3M 2.45%, 6M 2.75%) plus a small volatility adjustment. The evidence row now says "MODELLED in sources.fetch_fx (no live FBIL feed integrated)" and the value ends with "cannot verify against FBIL; indicative only". Hedge reasons and forward titles mark the rate as indicative. The simulated toggles (feed down, stale, corrupted, disagreement) are labelled SIMULATED in the ledger instead of citing fbil.org.in. **Answer if asked:** "Spot and volatility are real ECB data. The premium curve is modelled from the 2025–26 FBIL range because we couldn't get a parseable FBIL feed in time, and the ledger says so."
 2. **Razorpay isn't actually called.** `actions._razorpay_test_lookup_or_create()` makes up a `pay_rzptest_…` ID and stores it in our own `cache` table. The rules say payments "run in a payment provider's test mode". **Honest answer:** "The outbox and receipt lookup are built the way Razorpay's receipt-based idempotency works. Wiring the real test-mode API is a one-function change." Don't say "Razorpay dashboard shows one payment".
 3. **The bank forward reference `HDFC-FWD-…` is a placeholder.** No email or bank request is actually sent. Fine for a demo, but don't imply a bank was contacted.
-4. **Person Search may not be returning results.** There are no `/person/search` responses in the cache, which suggests the call is failing, and the code then reports "found 0 matches". The outcome is still safe (the payment is always held on a bank-change request, whatever the search finds), but don't claim "we verified Rahul doesn't work at Zebra". Say "we held it, and the sender's Gmail address doesn't match zebra.com".
-5. **The maker/trader classifier is a keyword list and defaults to MAKER.** The Zebra search returned "Sun Data Processing" and "Wayinfotech solutions" as makers. If asked: "It's a first filter; a person reviews the RFQ list before anything is sent."
+4. **Person Search returns 0 profiles for the demo sender.** The call works now (the filter bug is fixed) and the reply is cut to name, role and employer before storage. The payment is held on any bank-change request whatever the search finds, so say "we held it, and the sender's Gmail address doesn't match zebra.com", not "we proved Rahul doesn't work there".
+5. **The maker/trader classifier is a keyword list.** It now says which words it matched ("Likely maker: description mentions ['manufactur', 'plant']"), and a company with no maker or trader words goes to "needs review" with no RFQ (Bartech and NTK in the Zebra search). It's still keywords: "Sun Data Processing" passes because its description mentions manufacturing. If asked: "It's a first filter; a person confirms before an RFQ goes out."
 6. **s = 1 everywhere** (section 4). The "dynamic" policy is really "top of range" in this market.
-7. **A forecast PO also gets a payment proposal** (PO-2026-403). Paying against a PO with no invoice is odd. It sits in drafted and a person would reject it.
+7. **Forecast POs:** the forward is proposed, the payment is held ("no supplier invoice yet"). A person can also reject any action with a reason.
 8. **The staleness gate can bite on finals day.** It now runs on the live rate: if the venue network is down and we fall back to the stored history (last date 20 Nov 2026), and that is more than one business day old, every invoice is held. The ECB rate is cached per day, so run the demo once online on the morning of the finals. If it does hold, that's the policy working: "the newest rate we can verify is from the 20th, policy allows one business day, so we hold."
 9. **The run time limit is per process.** Each run gets 120 s of live calls (`run_time_limit_seconds`); after that, checks are marked cannot verify and payments held. Cached replies are always served. After a kill and restart the resumed part gets a fresh 120 s.
 10. **Tenors are measured from today's date**, so numbers drift day to day. They match the figures above only on 22 Nov 2026.
@@ -280,7 +280,9 @@ Ordered by how much damage they could do.
 
 **What if the data is wrong?** Sanity bounds (spot must be ₹60–130, premium −2% to 15%). If they fail, we say "cannot verify" and make no decision. A 1-business-day freshness limit is in the policy and the tests, but not yet in the live path (see section 11, item 9).
 
-**What personal data do you touch?** Only for the bank-change check: the requester's name and work email, compared with professional profiles at the supplier. We store name, employer, source and date, nothing more. Everything else is company data.
+**What personal data do you touch?** Only for the bank-change check: the requester's name and email, compared with professional profiles at the supplier. The Person Search reply is cut to name, role and employer before it's stored. A supplier can ask us to purge it: `privacy.purge()` (Evidence tab button) redacts those values in every table and drops cached profile replies, and records the purge with counts only. Everything else is company data.
+
+**Can a person say no?** Yes. Any action not yet executed can be rejected with a name and reason. The rejection stays on the outbox row, so re-running the batch doesn't re-propose it.
 
 **What's irreversible, and who approves it?** Forward bookings, payments and RFQ emails. All wait for a person. Above ₹1 Cr, two people. Held items can't be approved at all until the hold is cleared. During the event, emails go only to our team inbox.
 
