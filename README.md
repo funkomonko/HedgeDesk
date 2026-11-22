@@ -117,7 +117,7 @@ pip install -r requirements.txt
 cp .env.example .env        # then put your CRUSTDATA_API_KEY in .env
 ```
 
-Web app, at [http://127.0.0.1:8000](https://hedge-desk-xi.vercel.app/):
+Web app, at https://hedge-desk-xi.vercel.app/:
 
 ```bash
 uvicorn app:app --host 127.0.0.1 --port 8000
