@@ -163,7 +163,7 @@ Due date moved from 20 Dec 2026 to 5 Feb 2027 = **+47 days** (HANDOFF.md says +4
 | 16 | No domestic maker | Says so; makes nothing up | **Simulated** flag |
 | 17 | Domestic price | Always "cannot verify, RFQ drafted" + break-even | Real |
 | 18* | Both FX feeds down | CANNOT_VERIFY, no decision | **Simulated** |
-| 19 | Stale rate (more than 1 business day old) | STALE_HOLD, names the date | **Simulated** |
+| 19 | Stale rate (more than 1 business day old) | STALE_HOLD, names the date | Toggle is simulated; the same gate now also runs on the live rate (`test_hardening.py` moves the date forward to trigger it) |
 | 20 | Nonsense feed (negative spot, 40% premium) | Rejected by sanity bounds | **Simulated** |
 | 21 | Market holiday | Uses last published day and says which | Real (ECB publishes 20 Nov for a 22 Nov run) |
 | 22 | Sources disagree | Flagged, freshest official rate used | **Simulated** |
@@ -220,7 +220,7 @@ Real ECB USD/INR daily rates, 30 Apr 2025 → 20 Nov 2026 (₹84.53 → ₹92.68
 - **Buyer:** CFO or finance head of a mid-size Indian importer (bearings, electronics, machinery, chemicals) with regular USD payables. Our client is a 3PL importer, "BharatPrecision Components & 3PL Imports".
 - **Who does it today:** a junior treasury analyst, an FX advisory firm on retainer (we use ₹45,000 a cycle), or the bank RM, who is conflicted because they earn on the spread.
 - **Our price:** ₹24,999 a month per company.
-- **Cost per job:** every Crustdata call is written to `cost_ledger` (credits × $0.05 × ₹92.68). A re-run from cache costs ₹0. A cold run of the 9-row demo is roughly 15–17 credits by the code's own estimates (enrich ≈ 2 credits, other calls ≈ 0.2), which is **about ₹70–80**. If you can, do one cold run before the finals so you can quote a measured number, not an estimate.
+- **Cost per job:** every Crustdata call is written to `cost_ledger` (credits × $0.05 × the latest ECB USD/INR we fetched). A re-run from cache costs ₹0. A cold run of the 9-row demo is roughly 15–17 credits by the code's own estimates (enrich ≈ 2 credits, other calls ≈ 0.2), which is **about ₹70–80**. If you can, do one cold run before the finals so you can quote a measured number, not an estimate.
 - **Value:** in the backtest the worst month dropped from ₹3.35 L to ₹1.38 L per $100k payable. For an importer paying $1M a month, that's about ₹20 L less loss in the worst month, against a ₹25k subscription.
 - **Gross margin:** above 99% on API costs. Hosting and support aren't counted, so say "API cost" rather than "all-in".
 
@@ -237,10 +237,12 @@ Most likely requests, and where to change them:
 | New hold rule | Add a flag in `book.build_book()` and a branch in `policy.decide()` |
 | New currency in scope | `currency_scope` in policy.yaml, plus the `ccy != "USD"` check in `book.py:429` (and FX data for that pair) |
 | Lower cost limit | `run_cost_limit_credits` in policy.yaml, or the Cost Limit box in the UI |
+| Lower time limit | `run_time_limit_seconds` in policy.yaml (hard_rules) |
+| VaR at 99% instead of 95% | `var_confidence_pct: 99` under `decision_rule` in policy.yaml; the KPI label follows |
+| Default duty or freight | `default_duty_pct` / `default_freight_pct` in policy.yaml, or the drawer (used when a row has no duty) |
 
-> 🚨 **Gotcha:** the `run_id` is a hash of the invoice rows and simulation flags. **It does not include the policy.** If you change `policy.yaml` and press "Run Demo Story" again, you get the same run_id, step 3 is **restored from the checkpoint**, and **your change won't show.**
-> **Fix during the demo:** run `python reset_demo.py` after changing the policy (the cache is kept, so the re-run is free and fast), then run again.
-> **Better fix, if there's time before freeze:** add `policy_version` or a hash of `policy.yaml` to `_deterministic_run_id` in `app.py`.
+> **Policy edits show up straight away.** The `run_id` is a hash of the invoice rows, the simulation flags and `policy.yaml`. Change the policy and press "Run Demo Story": it's a new run, decided fresh, and Crustdata replies come from cache so it costs 0 credits. Put the policy back and you get the old run again.
+> **Code edits are different.** If you change Python and not the policy, the same input still replays the old checkpoint. Run `python reset_demo.py` first (cache is kept).
 
 ---
 
@@ -255,11 +257,12 @@ Ordered by how much damage they could do.
 5. **The maker/trader classifier is a keyword list and defaults to MAKER.** The Zebra search returned "Sun Data Processing" and "Wayinfotech solutions" as makers. If asked: "It's a first filter; a person reviews the RFQ list before anything is sent."
 6. **s = 1 everywhere** (section 4). The "dynamic" policy is really "top of range" in this market.
 7. **A forecast PO also gets a payment proposal** (PO-2026-403). Paying against a PO with no invoice is odd. It sits in drafted and a person would reject it.
-8. **₹ cost conversion uses a fixed 92.68** (in `sources.crust()`), not the live spot.
-9. **The staleness gate is only simulated.** In live mode, `fetch_fx()` never compares the rate's date with `max_market_data_age_business_days`. If Frankfurter is down it falls back to the local history file (last date 20 Nov 2026) without complaining. That's fine on demo day, but it would be silently stale a week later. In the Q&A about bad data, say "sanity bounds, plus a staleness hold we've tested but not yet wired into the live path".
+8. **The staleness gate can bite on finals day.** It now runs on the live rate: if the venue network is down and we fall back to the stored history (last date 20 Nov 2026), and that is more than one business day old, every invoice is held. The ECB rate is cached per day, so run the demo once online on the morning of the finals. If it does hold, that's the policy working: "the newest rate we can verify is from the 20th, policy allows one business day, so we hold."
+9. **The run time limit is per process.** Each run gets 120 s of live calls (`run_time_limit_seconds`); after that, checks are marked cannot verify and payments held. Cached replies are always served. After a kill and restart the resumed part gets a fresh 120 s.
 10. **Tenors are measured from today's date**, so numbers drift day to day. They match the figures above only on 22 Nov 2026.
 11. **There's no LLM in the system.** The context doc planned one for reading invoices. It's a strength for ethics ("no model makes any decision"), but don't call it "AI-powered".
-12. **Repo hygiene:** the old v1 files under `hedgedesk/*.py` and `hedgedesk_state.db` are still there; `.env.example` points `HEDGEDESK_DB_PATH` at the v1 DB (the current code ignores it and always uses `hedgedesk.db`); the old README had `file:///C:/Users/Arjun Kumar/...` links that don't work for anyone else.
+12. **Choices that hold more often than before:** a CSV row with no currency is held (we don't assume USD unless the column is `amount_usd`); an unknown document type ("proforma", "quote") is treated as a forecast, which means a smaller hedge range; a typed request that names a supplier but no domain usually gets a lookalike hold, so for live typed demos include the domain, e.g. "SKF GmbH (skf.com)".
+13. **Premium thresholds are only as good as the model around them.** Each hedge shows the bank premium above which it would drop to the bottom of its range. That comparison is exact for our formula; it doesn't make the modelled premium itself real.
 
 ---
 

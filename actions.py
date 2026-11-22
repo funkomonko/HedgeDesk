@@ -87,6 +87,8 @@ def approve(
             return d
 
         payload = json.loads(row["payload"])
+        if row["kind"] in {"payment", "forward"} and payload.get("inr_value") is None:
+            raise ValueError(f"Action {idem_key} has no verified INR value, so the approval limit can't be checked. Not approved.")
         inr_val = float(payload.get("inr_value") or 0.0)
         if inr_val > dual_thresh_inr and not second_approver:
             raise ValueError(

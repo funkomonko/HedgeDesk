@@ -253,7 +253,7 @@
 
     <section class="kpi-grid">
       <div class="kpi"><div class="label"><span class="ico"><svg class="i sm"><use href="#i-shield"/></svg></span>Total Hedged Exposure</div><div class="val" id="kHedged">$0</div><div class="hint" id="kCount">0 invoices processed</div></div>
-      <div class="kpi k-green"><div class="label"><span class="ico"><svg class="i sm"><use href="#i-activity"/></svg></span>95% FX VaR Exposure</div><div class="val" id="kVar">₹0</div><div class="hint" id="kFwdCost">Fwd carry cost: ₹0</div></div>
+      <div class="kpi k-green"><div class="label"><span class="ico"><svg class="i sm"><use href="#i-activity"/></svg></span><span id="kVarLbl">95%</span>&nbsp;FX VaR Exposure</div><div class="val" id="kVar">₹0</div><div class="hint" id="kFwdCost">Fwd carry cost: ₹0</div></div>
       <div class="kpi k-amber"><div class="label"><span class="ico"><svg class="i sm"><use href="#i-alert"/></svg></span>Holds &amp; Fraud Catches</div><div class="val" id="kHolds">0</div><div class="hint">Duplicates / Lookalikes / Bank Fraud</div></div>
       <div class="kpi k-purple"><div class="label"><span class="ico"><svg class="i sm"><use href="#i-coins"/></svg></span>Measured Job Cost</div><div class="val" id="kCost">₹0.00</div><div class="hint" id="kCredits">0.00 Crustdata credits</div></div>
       <div class="kpi k-blue"><div class="label"><span class="ico"><svg class="i sm"><use href="#i-wallet"/></svg></span>Finance Feasibility</div><div class="val" id="kSub">₹24,999/mo</div><div class="hint" id="kMargin">vs ₹45,000 manual advisor</div></div>
@@ -411,7 +411,8 @@
             cost_limit_credits: parseFloat(document.getElementById("costLimit").value || "25"),
           })
         });
-        const d = await res.json();
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) return alert(`Run failed (HTTP ${res.status}): ${d.detail || "server error"}. Nothing was executed.`);
         currentRunId = d.run_id;
         renderResult(d);
         loadHealth();
@@ -427,7 +428,8 @@
       document.getElementById("loadingTxt").style.display = "inline-flex";
       try {
         const r = await fetch("/api/upload-csv", { method: "POST", body: fd });
-        const d = await r.json();
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) return alert(`Upload failed (HTTP ${r.status}): ${d.detail || "server error"}. Nothing was executed.`);
         currentRunId = d.run_id;
         renderResult(d);
       } finally {
@@ -463,11 +465,12 @@
       const holds = (d.decisions || []).filter(x => !["HEDGE_FORWARD","ROLL_EXISTING_FORWARD"].includes(x.action)).length;
       document.getElementById("kHedged").textContent = `$${Number(s.total_hedged_usd||0).toLocaleString()}`;
       document.getElementById("kCount").textContent = `${s.total_invoices||0} invoices processed`;
+      document.getElementById("kVarLbl").textContent = `${s.var_confidence_pct ?? 95}%`;
       document.getElementById("kVar").textContent = `₹${Number(s.total_var_95_inr||0).toLocaleString("en-IN")}`;
       document.getElementById("kFwdCost").textContent = `Fwd carry: ₹${Number(s.total_fwd_cost_inr||0).toLocaleString("en-IN")}`;
       document.getElementById("kHolds").textContent = holds;
       document.getElementById("kCost").textContent = `₹${Number(s.measured_job_cost_inr||0).toFixed(2)}`;
-      document.getElementById("kCredits").textContent = `${s.measured_credits||0} Crustdata credits`;
+      document.getElementById("kCredits").textContent = `${s.measured_credits||0} / ${s.run_cost_limit_credits ?? 25} credits` + (s.run_time_s!=null ? ` · ${Number(s.run_time_s).toFixed(1)}s / ${s.run_time_limit_s}s` : '');
       document.getElementById("kMargin").textContent = `vs ₹45k advisor (${s.gross_margin_pct||99}% GM)`;
       document.getElementById("jobCostBadge").textContent = `Job Cost: ₹${Number(s.measured_job_cost_inr||0).toFixed(2)}`;
 
@@ -495,7 +498,7 @@
           <td>${pill(dec.action, c)}<br/><span class="small mono">${dec.policy_clause}</span></td>
           <td class="mono">${dec.range_lo!=null?`[${Math.round(dec.range_lo*100)}%,${Math.round(dec.range_hi*100)}%]`:'-'}<br/><strong>${Math.round((dec.ratio||0)*100)}%</strong> ($${Number(dec.hedged_usd||0).toLocaleString()})</td>
           <td class="mono">${dec.risk_pct}% vs ${dec.cost_pct}%<br/><span class="small">VaR: ₹${Number(dec.var_95_inr||0).toLocaleString("en-IN")}</span></td>
-          <td class="mono">${dec.forward_rate?'₹'+dec.forward_rate:'HOLD'}<br/><span class="small">Carry: ₹${Number(dec.fwd_cost_inr||0).toLocaleString("en-IN")}${dec.roll_cost_inr?` + Roll ₹${dec.roll_cost_inr}`:''}</span></td>
+          <td class="mono">${dec.forward_rate?'₹'+dec.forward_rate:'HOLD'}<br/><span class="small">Carry: ₹${Number(dec.fwd_cost_inr||0).toLocaleString("en-IN")}${dec.roll_cost_inr?` + Roll ₹${dec.roll_cost_inr}`:''}</span>${dec.prem_bottom_of_range_above_pct!=null?`<br/><span class="small" title="Our premium is modelled. Compare the bank's quoted annual premium to these.">Premium used ${dec.ann_prem_pct}% (modelled). Bank quote ≤ ${dec.prem_top_of_range_below_pct<0?'n/a':dec.prem_top_of_range_below_pct+'%'} → top of range; ≥ ${dec.prem_bottom_of_range_above_pct<0?'any':dec.prem_bottom_of_range_above_pct+'%'} → bottom</span>`:''}</td>
           <td>${dec.reason}<br/>${evLinks}</td>
         </tr>`;
       }).join("");
@@ -536,7 +539,7 @@
         return `<tr>
           <td class="mono">${o.kind.toUpperCase()}</td>
           <td><strong>${p.title||o.kind}</strong><br/><span class="small mono">Invoice: ${o.invoice_id}</span></td>
-          <td class="mono">₹${Number(p.inr_value||0).toLocaleString("en-IN")}</td>
+          <td class="mono">${p.inr_value==null?'<span class="small">cannot verify (no FX rate)</span>':'₹'+Number(p.inr_value).toLocaleString("en-IN")}</td>
           <td>${pill(o.state.toUpperCase(), col)}</td>
           <td class="mono small">${o.idem_key}<br/>${o.external_ref?'<strong class="ext-ref">'+o.external_ref+'</strong>':''}</td>
           <td>${btns}</td>

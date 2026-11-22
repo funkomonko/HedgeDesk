@@ -22,6 +22,7 @@ tenor_ranges:
 
 decision_rule:
   k: 3.0
+  var_confidence_pct: 95
   vol_window_trading_days: 60
 
 hard_rules:
@@ -29,6 +30,7 @@ hard_rules:
   dual_approval_threshold_inr: 10000000
   max_market_data_age_business_days: 1
   max_tenor_days: 180
+  run_time_limit_seconds: 120
   sanity_bounds:
     min_spot_usd_inr: 60.0
     max_spot_usd_inr: 130.0

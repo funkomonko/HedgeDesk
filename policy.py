@@ -10,11 +10,23 @@ import math
 from typing import Any, Dict, List, Optional, Tuple
 
 
-def var_95(spot: float, amount_usd: float, sigma_daily: float, trading_days_h: int) -> float:
-    """95% parametric Value-at-Risk in INR over trading-day horizon h."""
+_Z_TABLE = {90.0: 1.282, 95.0: 1.645, 97.5: 1.96, 99.0: 2.326}
+
+
+def var_z(confidence_pct: float = 95.0) -> float:
+    """One-sided normal z for a VaR confidence level (95 -> 1.645 as in the context doc, 99 -> 2.326)."""
+    c = float(confidence_pct)
+    if c in _Z_TABLE:
+        return _Z_TABLE[c]
+    from statistics import NormalDist
+    return round(NormalDist().inv_cdf(c / 100.0), 4)
+
+
+def var_95(spot: float, amount_usd: float, sigma_daily: float, trading_days_h: int, z: float = 1.645) -> float:
+    """Parametric Value-at-Risk in INR over trading-day horizon h. z=1.645 is 95%; policy.yaml can change it."""
     if spot <= 0 or amount_usd <= 0 or trading_days_h <= 0:
         return 0.0
-    return 1.645 * sigma_daily * math.sqrt(float(trading_days_h)) * spot * amount_usd
+    return z * sigma_daily * math.sqrt(float(trading_days_h)) * spot * amount_usd
 
 
 def fwd_cost(
@@ -111,6 +123,7 @@ def decide(
     sigma_daily = float(market.get("sigma_daily") or 0.0022)
     premia_pct = market.get("premia_pct") or {}
     k_val = float(policy_cfg["decision_rule"]["k"])
+    z_val = var_z(policy_cfg["decision_rule"].get("var_confidence_pct", 95))
     spread_bps = float(policy_cfg["cost_and_landed_assumptions"]["bank_spread_bps"])
 
     decisions: List[Dict[str, Any]] = []
@@ -168,6 +181,33 @@ def decide(
 
         # 2. Scope & Date checks (Cases 4, 5, 6, 8, 9)
         flags = inv.get("flags", [])
+        if "MISSING_CURRENCY" in flags or "NEGATIVE_AMOUNT" in flags:
+            if "NEGATIVE_AMOUNT" in flags:
+                act, clause, why = ("HOLD_NEGATIVE_AMOUNT", "HOLD.NEGATIVE_AMOUNT",
+                                    f"Amount is negative ({inv.get('amount_usd')}): reads as a credit note or refund, not a payment we owe. Held for finance team; nothing hedged or paid.")
+            else:
+                act, clause, why = ("HOLD_MISSING_CURRENCY", "HOLD.MISSING_CURRENCY",
+                                    "Cannot verify: no currency given on the invoice, so FX exposure is unknown. Held and requesting the currency from finance team.")
+            decisions.append({
+                "invoice_id": inv_id,
+                "bucket": inv.get("bucket", "MISSING_FIELDS"),
+                "action": act,
+                "ratio": 0.0,
+                "hedged_usd": 0.0,
+                "var_95_inr": 0.0,
+                "risk_pct": 0.0,
+                "cost_pct": 0.0,
+                "s_factor": 0.0,
+                "forward_rate": None,
+                "fwd_cost_inr": 0.0,
+                "roll_cost_inr": 0.0,
+                "risk_flag": "high",
+                "policy_clause": clause,
+                "evidence_ids": ev_ids,
+                "reason": why,
+            })
+            continue
+
         if "NO_FX_EXPOSURE_INR" in flags:
             decisions.append({
                 "invoice_id": inv_id,
@@ -214,7 +254,7 @@ def decide(
         missing_hold = None
         if "MISSING_AMOUNT" in flags:
             missing_hold = ("HOLD_MISSING_AMOUNT", "HOLD.MISSING_AMOUNT",
-                            "Cannot verify: no amount with a currency was given; held and requesting the invoice amount from finance team.")
+                            f"Cannot verify: {inv.get('amount_note') or 'no amount with a currency was given'}; held and requesting the invoice amount from finance team.")
         elif "MISSING_SUPPLIER" in flags:
             missing_hold = ("HOLD_MISSING_SUPPLIER", "HOLD.MISSING_SUPPLIER",
                             "Cannot verify: no supplier named; held and requesting the payee from finance team.")
@@ -256,7 +296,12 @@ def decide(
                 "risk_flag": risk_flag,
                 "policy_clause": "HOLD.CANNOT_DETERMINE_TENOR",
                 "evidence_ids": ev_ids,
-                "reason": "Missing due date: cannot determine tenor; held and requesting due date from finance team.",
+                "reason": (
+                    "Missing due date: cannot determine tenor; held and requesting due date from finance team."
+                    if "MISSING_DUE_DATE" in flags else
+                    f"Due date '{inv.get('due_date')}' can't be read without guessing (e.g. 03/04/2027 could be 3 April or 4 March): "
+                    "cannot determine tenor; held and requesting the date in YYYY-MM-DD from finance team."
+                ),
             })
             continue
 
@@ -383,7 +428,7 @@ def decide(
             note_extra.append("Supplier not found on Crustdata ('cannot verify'): confirmed hedge capped at bottom of range; payment HELD for person.")
 
         q_usd = float(inv["amount_usd"])
-        v95 = var_95(spot, q_usd, sigma_daily, trading_h)
+        v95 = var_95(spot, q_usd, sigma_daily, trading_h, z=z_val)
         notional_inr = spot * q_usd
         risk_pct = (v95 / notional_inr) if notional_inr > 0 else 0.0
 
@@ -401,6 +446,15 @@ def decide(
         )
         hedged_usd = round(q_usd * ratio, 2)
         fwd_cost_inr = round(hedged_usd * (fwd_rate - spot), 2)
+
+        # Premium sensitivity: our premia are modelled, so show the bank quote at which this decision changes.
+        # cost% = p*d/365 + spread; s hits 0 when cost% >= risk% and 1 when cost% <= risk%/k.
+        spread_frac = spread_bps / 10_000.0
+        if effective_risk_flag == "high" or tenor_d <= 0:
+            prem_top_below = prem_floor_above = None  # ratio fixed by the risk rule, premium doesn't move it
+        else:
+            prem_floor_above = round((risk_pct - spread_frac) * 365.0 / tenor_d * 100.0, 2)
+            prem_top_below = round((risk_pct / k_val - spread_frac) * 365.0 / tenor_d * 100.0, 2)
 
         # Case 27*: Forward roll if due date moved
         roll_days = int(inv.get("roll_days") or 0)
@@ -432,6 +486,8 @@ def decide(
             "s_factor": s_val,
             "fwd_cost_inr": fwd_cost_inr,
             "roll_cost_inr": roll_cost_inr,
+            "prem_top_of_range_below_pct": prem_top_below,
+            "prem_bottom_of_range_above_pct": prem_floor_above,
             "risk_flag": effective_risk_flag,
             "policy_clause": clause,
             "evidence_ids": ev_ids,

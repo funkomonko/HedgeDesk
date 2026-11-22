@@ -243,6 +243,91 @@ def log_cost(run_id: str, endpoint: str, credits: float = 0.0, inr_cost: float =
         )
 
 
+# ── Per-run time limit ────────────────────────────────────────────────────────
+# engine.run_pipeline starts a clock per run_id; crust() refuses new live calls once it runs out,
+# the same way it refuses calls past the credit limit. Cached replies are still served, so a
+# resumed or replayed run is never blocked. The clock lives in this process: after a kill and
+# restart the resumed portion gets a fresh allowance.
+_RUN_CLOCKS: Dict[str, Tuple[float, float]] = {}
+
+
+def start_run_clock(run_id: str, limit_seconds: float) -> None:
+    _RUN_CLOCKS[run_id] = (time.monotonic(), float(limit_seconds))
+
+
+def run_time_left(run_id: str) -> Optional[float]:
+    clk = _RUN_CLOCKS.get(run_id)
+    if not clk:
+        return None
+    return clk[1] - (time.monotonic() - clk[0])
+
+
+def run_clock_info(run_id: str) -> Dict[str, Any]:
+    clk = _RUN_CLOCKS.get(run_id)
+    if not clk:
+        return {"elapsed_s": None, "limit_s": None}
+    return {"elapsed_s": round(time.monotonic() - clk[0], 2), "limit_s": clk[1]}
+
+
+FALLBACK_COST_FX = 92.68  # used for the ledger's INR column only if no USD/INR rate has ever been fetched
+
+
+def cost_fx_rate(db_path: Path = DB_FILE) -> float:
+    """USD/INR used to price Crustdata credits in INR: the latest ECB rate we fetched, else the stored history."""
+    try:
+        with db_conn(db_path) as conn:
+            row = conn.execute(
+                "SELECT response_json FROM cache WHERE endpoint LIKE 'https://api.frankfurter.app/latest%' "
+                "ORDER BY fetched_at DESC LIMIT 1"
+            ).fetchone()
+        if row:
+            return float(json.loads(row["response_json"])["rates"]["INR"])
+        snap = BASE_DIR / "hedgedesk" / "usd_inr_ecb_history.json"
+        if snap.exists():
+            rates = json.loads(snap.read_text(encoding="utf-8")).get("rates", {})
+            if rates:
+                return float(rates[sorted(rates)[-1]]["INR"])
+    except Exception:
+        pass
+    return FALLBACK_COST_FX
+
+
+def business_days_missed(record_date: str, today: str) -> int:
+    """Weekdays strictly between the rate's date and today: published fixings we don't have.
+    Friday's rate read on Monday morning = 0 missed; read on Wednesday = 2 missed (Mon, Tue)."""
+    from datetime import date, timedelta
+    try:
+        d0 = date.fromisoformat(record_date[:10])
+        d1 = date.fromisoformat(today[:10])
+    except ValueError:
+        return 999
+    n, d = 0, d0 + timedelta(days=1)
+    while d < d1:
+        if d.weekday() < 5 and d not in _target_holidays(d.year):
+            n += 1
+        d += timedelta(days=1)
+    return n
+
+
+def _target_holidays(year: int):
+    """Days the ECB publishes no reference rate (TARGET2 closing days): 1 Jan, Good Friday,
+    Easter Monday, 1 May, 25 and 26 Dec."""
+    from datetime import date, timedelta
+    # Anonymous Gregorian algorithm for Easter Sunday
+    a, b, c = year % 19, year // 100, year % 100
+    d, e = b // 4, b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = c // 4, c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month, day = divmod(h + l - 7 * m + 114, 31)
+    easter = date(year, month, day + 1)
+    return {date(year, 1, 1), easter - timedelta(days=2), easter + timedelta(days=1),
+            date(year, 5, 1), date(year, 12, 25), date(year, 12, 26)}
+
+
 def _credits_from_headers(resp: Any) -> float:
     try:
         return float(resp.headers.get("x-credits-used") or 0.0)
@@ -309,7 +394,27 @@ def crust(
                 "evidence_id": ev_id,
             }
 
-    # 2. Enforce run cost limit BEFORE live call (Case 28)
+    # 2a. Enforce the run's time limit BEFORE a live call
+    left = run_time_left(run_id)
+    if left is not None and left <= 0:
+        clk = run_clock_info(run_id)
+        ev_id = add_evidence(
+            run_id=run_id,
+            source=f"{CRUSTDATA_BASE}{endpoint}",
+            field_path="time_gate",
+            value=f"TIME_LIMIT_REACHED ({clk['elapsed_s']:.1f}s/{clk['limit_s']:.0f}s)",
+            record_date=today_str(),
+            db_path=db_path,
+        )
+        return {
+            "ok": False,
+            "status_code": 402,
+            "error": "TIME_LIMIT_REACHED",
+            "message": f"Run time limit ({clk['limit_s']:.0f}s) reached; skipped {endpoint}, check marked cannot verify.",
+            "evidence_id": ev_id,
+        }
+
+    # 2b. Enforce run cost limit BEFORE live call (Case 28)
     summary = get_run_cost_summary(run_id, db_path)
     est_credits = 2.0 if "enrich" in endpoint else (1.0 if "web" in endpoint else 0.2)
     if summary["total_credits"] + est_credits > limit_cr:
@@ -355,18 +460,24 @@ def crust(
     }
     url = f"{CRUSTDATA_BASE}{endpoint}"
     backoff = 2.0
+    fx_for_cost = cost_fx_rate(db_path)
 
     for attempt in range(4):
         try:
             if simulate_status == 429 and attempt == 0:
                 time.sleep(0.05)
                 continue
-            with httpx.Client(timeout=30.0) as client:
+            left = run_time_left(run_id)
+            if left is not None and left <= 0:
+                return {"ok": False, "status_code": 402, "error": "TIME_LIMIT_REACHED",
+                        "message": f"Run time limit reached while retrying {endpoint}; check marked cannot verify."}
+            call_timeout = 30.0 if left is None else max(2.0, min(30.0, left))
+            with httpx.Client(timeout=call_timeout) as client:
                 resp = client.post(url, headers=headers, json=body)
             if resp.status_code >= 400:
                 # Failed calls are still calls: record them (credits as charged by Crustdata, usually 0).
                 fail_cr = _credits_from_headers(resp)
-                log_cost(run_id, f"{endpoint} (HTTP {resp.status_code})", fail_cr, round(fail_cr * usd_per_cr * 92.68, 2), db_path)
+                log_cost(run_id, f"{endpoint} (HTTP {resp.status_code})", fail_cr, round(fail_cr * usd_per_cr * fx_for_cost, 2), db_path)
             if resp.status_code == 402:
                 ev_id = add_evidence(
                     run_id=run_id,
@@ -380,7 +491,11 @@ def crust(
             if resp.status_code == 429 or resp.status_code >= 500:
                 reset_s = float(resp.headers.get("x-ratelimit-reset", backoff))
                 if attempt < 3:
-                    time.sleep(min(max(reset_s, backoff), 12.0))
+                    wait_s = min(max(reset_s, backoff), 12.0)
+                    left = run_time_left(run_id)
+                    if left is not None:
+                        wait_s = min(wait_s, max(0.0, left))
+                    time.sleep(wait_s)
                     backoff = min(backoff * 2.0, 15.0)
                     continue
                 return {"ok": False, "status_code": resp.status_code, "error": f"HTTP {resp.status_code}"}
@@ -390,7 +505,7 @@ def crust(
             data = resp.json()
             cr_used = float(resp.headers.get("x-credits-used", est_credits) or 0.0)
             req_id = resp.headers.get("x-request-id", "")
-            inr_cost = round(cr_used * usd_per_cr * 92.68, 2)
+            inr_cost = round(cr_used * usd_per_cr * fx_for_cost, 2)
             now = utc_now()
 
             with db_conn(db_path) as conn:
@@ -556,13 +671,33 @@ def fetch_fx(
                     log_cost(run_id, "fx_official_reference (failed)", 0.0, 0.0, db_path)
                     time.sleep(0.5)
 
+        fx_source_used = source_url
         if spot is None and hist_map:
             # Market holiday or fallback to latest stored business day (Case 21)
             rec_date = sorted(hist_map.keys())[-1]
             spot = hist_map[rec_date]
+            fx_source_used = "Stored ECB/Frankfurter history snapshot (hedgedesk/usd_inr_ecb_history.json; live feed failed)"
 
         if spot is None:
             return {"status": "CANNOT_VERIFY", "reason": "All FX feeds unreachable.", "spot": None, "evidence_ids": []}
+
+        # Staleness gate on the live path (Case 19 for real data, not only the UI toggle): if the rate we
+        # ended up with (live or the stored fallback) is older than policy allows, hold instead of deciding.
+        max_age = int(cfg["hard_rules"].get("max_market_data_age_business_days", 1))
+        missed = business_days_missed(rec_date, today_str())
+        if missed > max_age:
+            ev_id = add_evidence(
+                run_id, "https://api.frankfurter.app/latest?from=USD&to=INR (or stored fallback)",
+                "reference_rate_date", f"STALE ({rec_date}, {missed} business days missed)", rec_date, db_path=db_path,
+            )
+            return {
+                "status": "STALE_HOLD",
+                "reason": (f"Latest USD/INR rate we could get is from {rec_date} ({missed} business days old); "
+                           f"policy allows {max_age}. Holding decisions until a fresh rate is available."),
+                "last_available_date": rec_date,
+                "spot": round(spot, 4),
+                "evidence_ids": [ev_id],
+            }
 
         valid_dates = sorted(d for d in hist_map.keys() if d <= rec_date)
         window_dates = valid_dates[-61:]
@@ -591,7 +726,7 @@ def fetch_fx(
     if not as_of_date:
         ev1 = add_evidence(
             run_id,
-            "https://api.frankfurter.app/latest?from=USD&to=INR",
+            fx_source_used,
             "rates.INR",
             f"{spot} (published business day {rec_date})",
             rec_date,

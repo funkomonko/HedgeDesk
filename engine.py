@@ -23,7 +23,9 @@ from sources import (
     get_run_evidence,
     get_step,
     load_policy_yaml,
+    run_clock_info,
     save_step,
+    start_run_clock,
 )
 
 
@@ -46,6 +48,8 @@ def run_pipeline(
     cfg = load_policy_yaml()
     policy_version = cfg["policy_version"]
     logs: List[str] = []
+    time_limit_s = float(cfg["hard_rules"].get("run_time_limit_seconds", 120))
+    start_run_clock(run_id, time_limit_s)
 
     raw_for_resume = load_invoices(invoices_input)
     save_step(run_id, "0_request", "completed", raw_for_resume)
@@ -180,7 +184,8 @@ def run_pipeline(
             inv_id = inv["invoice_id"]
             dec = dec_by_id[inv_id]
             sup = inv.get("supplier") or {}
-            spot_val = float(market.get("spot") or 92.68)
+            # INR values are only shown when the rate is verified; otherwise None ("cannot verify"), never a guessed rate.
+            spot_val = float(market["spot"]) if (market.get("status") == "VERIFIED" and market.get("spot")) else None
 
             # Determine if action is cleanly actionable or HELD
             hold_reason = None
@@ -190,6 +195,8 @@ def run_pipeline(
                 hold_reason = inv["bank_change_check"]["reason"]
             elif sup.get("status") == "CANNOT_VERIFY":
                 hold_reason = "Supplier cannot verify on Crustdata; payment held for human sign-off."
+            elif spot_val is None:
+                hold_reason = f"Cannot verify USD/INR rate ({market.get('reason') or market.get('status')}): INR value unknown, so approval limits can't be checked. Held."
 
             # 1. Forward booking / Roll proposal (only when ratio > 0 or held)
             if dec["ratio"] > 0 or hold_reason:
@@ -206,7 +213,8 @@ def run_pipeline(
                         ),
                         "supplier": sup.get("legal_name") or inv["supplier_raw"],
                         "usd_amount": dec["hedged_usd"],
-                        "inr_value": round(dec["hedged_usd"] * (dec.get("forward_rate") or spot_val), 2),
+                        "inr_value": (round(dec["hedged_usd"] * (dec.get("forward_rate") or spot_val), 2)
+                                      if (dec.get("forward_rate") or spot_val) else None),
                         "due_date": inv["due_date"],
                         "roll_cost_inr": dec.get("roll_cost_inr", 0.0),
                         "policy_clause": dec["policy_clause"],
@@ -226,7 +234,7 @@ def run_pipeline(
                     "title": f"Razorpay Test Payout (${inv['amount_usd']:,.2f} to {sup.get('legal_name') or inv['supplier_raw']})",
                     "supplier": sup.get("legal_name") or inv["supplier_raw"],
                     "usd_amount": inv["amount_usd"],
-                    "inr_value": round(inv["amount_usd"] * spot_val, 2),
+                    "inr_value": round(inv["amount_usd"] * spot_val, 2) if spot_val else None,
                     "due_date": inv["due_date"],
                 },
                 held_reason=pay_hold,
@@ -286,6 +294,11 @@ def run_pipeline(
             "measured_job_cost_inr": costs["total_inr_cost"],
             "subscription_price_inr": sub_inr,
             "manual_advisor_fee_inr": advisor_inr,
+            "var_confidence_pct": float(cfg["decision_rule"].get("var_confidence_pct", 95)),
+            "run_time_s": run_clock_info(run_id)["elapsed_s"],
+            "run_time_limit_s": time_limit_s,
+            "run_cost_limit_credits": float(cost_limit_credits if cost_limit_credits is not None
+                                            else cfg["cost_and_landed_assumptions"]["run_cost_limit_credits"]),
             "gross_margin_pct": round((1.0 - costs["total_inr_cost"] / max(1.0, sub_inr)) * 100.0, 2),
         },
     }

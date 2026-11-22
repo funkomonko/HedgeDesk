@@ -18,15 +18,15 @@ The people who do this job today are an in-house treasury analyst, an FX advisor
 
 ## Input
 
-- A list of open invoices and purchase orders, as a CSV (see [`sample_invoices.csv`](sample_invoices.csv)) or a plain-English request typed into the web app, e.g. *"We owe SKF GmbH (skf.com) USD 200,000 for 400 bearings due 2027-01-21"*. If a typed request leaves out the amount, the supplier or the due date, that invoice is held and the reason names the missing field. If it leaves out the quantity, the per-unit break-even is skipped.
-- The company's hedging policy in [`policy.yaml`](policy.yaml): allowed hedge ranges by tenor, the approval threshold, freshness and sanity limits, and the per-run budget.
+- A list of open invoices and purchase orders, as a CSV (see [`sample_invoices.csv`](sample_invoices.csv)) or a plain-English request typed into the web app, e.g. *"We owe SKF GmbH (skf.com) USD 200,000 for 400 bearings due 2027-01-21"*. The parser reads amounts written as "$200k", "200,000 USD", "₹1.2 crore" or "Rs 50 lakh", "500 bearings at $400 each", and dates like "21 Jan 2027" or "21/01/2027". It doesn't guess: an invoice is held, with the reason, if it has no amount, no supplier or no currency, if it gives two different amounts, if the amount is negative (reads as a credit note), or if the date is ambiguous (03/04/2027). If the quantity is missing, the per-unit break-even is skipped. CSV headers such as "Vendor", "Qty" or "Due Date" are mapped to our column names.
+- The company's hedging policy in [`policy.yaml`](policy.yaml): allowed hedge ranges by tenor, VaR confidence, the approval threshold, freshness and sanity limits, and the per-run limits (25 credits, 120 seconds). The policy is part of each run's ID, so an edited policy re-decides the same invoices instead of replaying the old result.
 
 ## Finished result
 
 For each invoice, one of two things:
 
 1. **A hedge decision inside the policy range.** It shows the risk, the cost, the policy clause it follows and the evidence IDs behind every number, plus a drafted forward booking and payment waiting for approval.
-2. **A hold with a reason**, such as: duplicate invoice, lookalike supplier, supplier not found, bank-detail change request, missing due date, wrong currency, tenor over 6 months, or market data stale or missing.
+2. **A hold with a reason**, such as: duplicate invoice, lookalike supplier, supplier not found, bank-detail change request, missing or unreadable due date, missing amount or currency, negative amount, wrong currency, tenor over 6 months, or market data stale or missing.
 
 For the larger invoices it also returns a list of Indian manufacturers (found on Crustdata, with traders filtered out), the landed cost of importing the part, the domestic price that would beat it, and a draft RFQ. We don't know any domestic supplier's actual price, so the output always says "cannot verify, RFQ drafted" rather than guessing one.
 
@@ -40,7 +40,7 @@ A run passes if:
 - no invoice is hedged or paid twice, including after the process is killed and restarted;
 - no rate, price or company fact appears without a source, and anything we can't source says "cannot verify".
 
-[`test_28_cases.py`](test_28_cases.py) checks this against 28 edge cases (duplicates, lookalikes, bad and stale market data, crashes mid-payment, out-of-credit errors, moved due dates and so on). All 28 pass; the latest run is in [`TESTS.md`](TESTS.md).
+[`test_28_cases.py`](test_28_cases.py) checks this against 28 edge cases (duplicates, lookalikes, bad and stale market data, crashes mid-payment, out-of-credit errors, moved due dates and so on). All 28 pass; the latest run is in [`TESTS.md`](TESTS.md). [`test_hardening.py`](test_hardening.py) adds 31 checks on input parsing, holds on missing or odd fields, the live staleness gate, the run time limit and the premium thresholds.
 
 ## Data sources
 
@@ -67,11 +67,13 @@ The architecture diagram is in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 A run goes through five steps. Each one saves its output to SQLite before the next one starts. If the process dies, re-running it with the same input skips every finished step, so nothing is fetched or proposed twice.
 
 1. **Book** (`book.py`). Parse the invoices, including messy amounts like "USD 1.2 lakh". Resolve each supplier on Crustdata, check any bank-change requests, link duplicates to the original, and bucket by due month and confirmed vs forecast.
-2. **Market** (`sources.py`). Get spot and 60-day volatility, and reject a spot outside the sanity bounds. If the live feed is down, fall back to the last published rate and say which date it's from. (The one-business-day staleness hold is in the policy and the tests, but the live path doesn't enforce it yet.)
+2. **Market** (`sources.py`). Get spot and 60-day volatility, and reject a spot outside the sanity bounds. If the live feed is down, fall back to the stored ECB history and say so. If the rate we end up with is more than one business day old (ECB holidays don't count), every invoice is held.
 3. **Policy** (`policy.py`). For each invoice:
-   - 95% VaR = 1.645 × daily vol × √(trading days) × spot × amount
+   - 95% VaR = 1.645 × daily vol × √(trading days) × spot × amount (confidence set in policy.yaml)
    - Forward cost = premium × days/365 + bank spread
    - Hedge more when cost is small relative to risk: `s = clip((risk/cost − 1)/(k − 1), 0, 1)`, then `ratio = low + s × (high − low)` within the policy range
+
+   Because our forward premium is modelled, each hedge also shows the bank quote at which the decision changes: below one premium it goes to the top of the range, above another it drops to the bottom. A treasurer can compare a real bank quote against those two numbers.
 
    High-risk suppliers get the bottom of the range. Forecast POs get a lower range than confirmed invoices. This file does no I/O, so the same input always gives the same answer.
 4. **Alternatives** (`alternatives.py`). Search for Indian makers, drop traders, then compute the landed import cost and the break-even domestic price.
@@ -136,6 +138,7 @@ Edge-case suite (rewrites `TESTS.md`):
 
 ```bash
 python test_28_cases.py
+python test_hardening.py
 ```
 
 Clear previous runs but keep the API cache, so demos stay fast and free:

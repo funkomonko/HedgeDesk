@@ -59,9 +59,97 @@ def parse_amount_messy(raw_val: Any) -> Dict[str, Any]:
         return {"amount": 0.0, "currency_override": ccy, "confidence": 0.0, "note": f"Could not parse '{s}'"}
 
     val = float(num_m.group(0).replace(",", "")) * mult
+    # "-50,000" or accounting "(50,000)" is a credit note / refund, not an amount we owe.
+    if re.search(r"-\s*[\$₹€]?\s*$", cleaned[: num_m.start()]) or re.match(r"^\s*\(.*\)\s*$", cleaned):
+        val = -val
     if note:
         return {"amount": round(val, 2), "currency_override": ccy, "confidence": conf, "note": note}
     return {"amount": round(val, 2), "currency_override": ccy, "confidence": 1.0, "note": ""}
+
+
+_MONTHS = {m: i for i, m in enumerate(
+    ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], start=1)}
+
+
+def normalize_date(raw: Any) -> str:
+    """
+    Turn a written due date into YYYY-MM-DD, or return the input unchanged when it can't be read
+    without guessing (build_book then flags INVALID_DUE_DATE and the invoice is held).
+    Accepts 2027-01-21, 21 Jan 2027, 21-Jan-2027, Jan 21, 2027, January 21st 2027, 21/01/2027.
+    Slash/dot dates are read day-first (Indian convention) only when unambiguous: 03/04/2027 could be
+    3 April or 4 March, so it is left as is and held.
+    """
+    s = str(raw or "").strip()
+    if not s:
+        return ""
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        return s
+
+    def _ok(y: int, m: int, d: int) -> str:
+        try:
+            return datetime(y, m, d).strftime("%Y-%m-%d")
+        except ValueError:
+            return ""
+
+    m = re.fullmatch(r"(\d{4})[/.](\d{1,2})[/.](\d{1,2})", s)
+    if m:
+        return _ok(int(m.group(1)), int(m.group(2)), int(m.group(3))) or s
+    m = re.fullmatch(r"(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})", s)
+    if m:
+        a, b, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if a == b or a > 12:
+            return _ok(y, b, a) or s
+        if b > 12:
+            return _ok(y, a, b) or s
+        return s  # ambiguous day/month
+    m = re.fullmatch(r"(\d{1,2})(?:st|nd|rd|th)?[\s\-]+([A-Za-z]{3,9})\.?,?[\s\-]+(\d{4})", s)
+    if m and m.group(2)[:3].lower() in _MONTHS:
+        return _ok(int(m.group(3)), _MONTHS[m.group(2)[:3].lower()], int(m.group(1))) or s
+    m = re.fullmatch(r"([A-Za-z]{3,9})\.?[\s\-]+(\d{1,2})(?:st|nd|rd|th)?,?[\s\-]+(\d{4})", s)
+    if m and m.group(1)[:3].lower() in _MONTHS:
+        return _ok(int(m.group(3)), _MONTHS[m.group(1)[:3].lower()], int(m.group(2))) or s
+    return s
+
+
+def _num_or_none(raw: Any) -> Optional[float]:
+    """'1,200' -> 1200.0, '7.5%' -> 7.5, '' / 'n/a' -> None. Never raises."""
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    s = str(raw or "").strip().replace(",", "").rstrip("%").strip()
+    try:
+        return float(s) if s else None
+    except ValueError:
+        return None
+
+
+_COLUMN_ALIASES = {
+    "supplier": "supplier_raw", "supplier_name": "supplier_raw", "vendor": "supplier_raw", "vendor_name": "supplier_raw",
+    "domain": "supplier_domain", "website": "supplier_domain", "supplier_website": "supplier_domain",
+    "invoice": "invoice_id", "invoice_no": "invoice_id", "invoice_number": "invoice_id", "invoice_#": "invoice_id",
+    "type": "doc_type", "document_type": "doc_type",
+    "ccy": "currency", "currency_code": "currency",
+    "qty": "quantity_units", "quantity": "quantity_units", "units": "quantity_units",
+    "due": "due_date", "payment_due": "due_date", "due_on": "due_date",
+    "description": "part_description", "item": "part_description", "part": "part_description",
+    "invoice_amount": "amount", "total": "amount", "value": "amount",
+}
+
+
+def _canonical_columns(r: Dict[str, Any]) -> Dict[str, Any]:
+    """'Supplier Name' / 'Vendor' / 'Qty' / 'Due Date' -> our column names. An exact column always wins over an alias."""
+    out: Dict[str, Any] = {}
+    for k, v in r.items():
+        if k is None:
+            continue
+        out[str(k).strip().lower().replace(" ", "_").replace("-", "_")] = v
+    for alias, canon in _COLUMN_ALIASES.items():
+        if alias in out and out.get(canon) in (None, ""):
+            out[canon] = out[alias]
+    return out
+
+
+_FORECAST_WORDS = {"forecast", "po", "purchase order", "purchase_order", "proforma", "pro forma", "quote", "estimate", "planned"}
+_CONFIRMED_WORDS = {"confirmed", "invoice", "bill", "commercial invoice", "tax invoice"}
 
 
 def load_invoices(source: Any) -> List[Dict[str, Any]]:
@@ -75,6 +163,11 @@ def load_invoices(source: Any) -> List[Dict[str, Any]]:
     elif isinstance(source, list):
         rows = [dict(r) for r in source]
 
+    rows = [_canonical_columns(r) for r in rows]
+    landed_cfg = load_policy_yaml().get("cost_and_landed_assumptions", {})
+    default_duty = float(landed_cfg.get("default_duty_pct", 7.5))
+    default_freight = float(landed_cfg.get("default_freight_pct", 3.2))
+
     normalized: List[Dict[str, Any]] = []
     for idx, r in enumerate(rows):
         if "amount_usd" in r and "parse_confidence" in r:
@@ -83,10 +176,24 @@ def load_invoices(source: Any) -> List[Dict[str, Any]]:
         inv_id = str(r.get("invoice_id") or f"INV-{idx+1}").strip()
         raw_amt = next((r[k] for k in ("amount_raw", "amount", "amount_usd") if r.get(k) not in (None, "")), 0)
         parsed_amt = parse_amount_messy(raw_amt)
-        ccy = (parsed_amt["currency_override"] or str(r.get("currency") or "USD")).upper().strip()
-        doc_type = str(r.get("doc_type") or "confirmed").lower().strip()
-        if doc_type not in {"confirmed", "forecast"}:
+        # No currency on the row or in the amount: left blank and held, never assumed to be USD.
+        ccy = (parsed_amt["currency_override"] or str(r.get("currency") or "")).upper().strip()
+        if not ccy and r.get("amount_usd") not in (None, "") and raw_amt == r.get("amount_usd"):
+            ccy = "USD"  # the column itself is named amount_usd, so the currency is stated, not guessed
+        ccy = {"US$": "USD", "$": "USD", "RS": "INR", "RS.": "INR", "₹": "INR", "€": "EUR"}.get(ccy, ccy)
+        doc_raw = str(r.get("doc_type") or "").lower().strip()
+        if doc_raw in _CONFIRMED_WORDS or not doc_raw:
             doc_type = "confirmed"
+        elif doc_raw in _FORECAST_WORDS:
+            doc_type = "forecast"
+        else:
+            # Unknown document type: treated as forecast (smaller hedge range) rather than a confirmed bill.
+            doc_type = "forecast"
+        qty_num = _num_or_none(r.get("quantity_units"))
+        qty_ok = qty_num is not None and qty_num >= 1
+        duty = _num_or_none(r.get("duty_pct"))
+        freight = _num_or_none(r.get("freight_pct"))
+        reduced = _num_or_none(r.get("reduced_from_usd"))
 
         normalized.append({
             "invoice_id": inv_id,
@@ -97,19 +204,21 @@ def load_invoices(source: Any) -> List[Dict[str, Any]]:
             "amount_usd": parsed_amt["amount"],
             "parse_confidence": parsed_amt["confidence"],
             "parse_note": parsed_amt["note"],
-            "quantity_units": max(1, int(float(r.get("quantity_units") or 1))),
-            # Quantity not given: per-unit landed cost / break-even cannot be computed (engine skips it).
-            "quantity_missing": str(r.get("quantity_units") or "").strip() == "",
+            "amount_note": str(r.get("amount_note") or "").strip(),
+            "quantity_units": int(qty_num) if qty_ok else 1,
+            # Quantity not given or unreadable: per-unit landed cost / break-even cannot be computed (engine skips it).
+            "quantity_missing": not qty_ok,
+            "doc_type_raw": doc_raw,
             "part_description": str(r.get("part_description") or "industrial components").strip(),
             "domestic_query": str(r.get("domestic_query") or r.get("part_description") or "industrial manufacturer").strip(),
-            "due_date": str(r.get("due_date") or "").strip(),
-            "previous_due_date": str(r.get("previous_due_date") or "").strip(),
-            "duty_pct": float(r.get("duty_pct") or 7.5),
-            "freight_pct": float(r.get("freight_pct") or 3.2),
+            "due_date": normalize_date(r.get("due_date")),
+            "previous_due_date": normalize_date(r.get("previous_due_date")),
+            "duty_pct": duty if duty is not None else default_duty,
+            "freight_pct": freight if freight is not None else default_freight,
             "bank_change_sender": str(r.get("bank_change_sender") or "").strip(),
             "bank_change_email": str(r.get("bank_change_email") or "").strip(),
             "cancelled": str(r.get("cancelled") or "").lower() in {"true", "1", "yes"},
-            "reduced_from_usd": float(r.get("reduced_from_usd") or 0.0) if r.get("reduced_from_usd") else None,
+            "reduced_from_usd": reduced if reduced else None,
         })
     return normalized
 
@@ -447,7 +556,11 @@ def build_book(
         roll_days = 0
         bucket = "UNASSIGNED"
 
-        if ccy == "INR":
+        if not ccy:
+            # With no amount either, the MISSING_AMOUNT hold (and its reason) covers it.
+            if float(inv.get("amount_usd") or 0.0) != 0:
+                flags.append("MISSING_CURRENCY")
+        elif ccy == "INR":
             flags.append("NO_FX_EXPOSURE_INR")
         elif ccy != "USD":
             flags.append(f"OUT_OF_SCOPE_CURRENCY_{ccy}")
@@ -473,7 +586,10 @@ def build_book(
 
         if not str(inv.get("supplier_raw") or "").strip() and not str(inv.get("supplier_domain") or "").strip():
             flags.append("MISSING_SUPPLIER")
-        if float(inv.get("amount_usd") or 0.0) <= 0:
+        amt_val = float(inv.get("amount_usd") or 0.0)
+        if amt_val < 0:
+            flags.append("NEGATIVE_AMOUNT")
+        elif amt_val == 0:
             flags.append("MISSING_AMOUNT")
         if bank_chk.get("has_bank_change"):
             flags.append("BANK_CHANGE_FRAUD_HOLD")
@@ -507,6 +623,12 @@ def build_book(
                 status = "HOLD_MISSING_DATE"
             elif "MISSING_AMOUNT" in inv["flags"]:
                 status = "HOLD_MISSING_AMOUNT"
+            elif "NEGATIVE_AMOUNT" in inv["flags"]:
+                status = "HOLD_NEGATIVE_AMOUNT"
+            elif "MISSING_CURRENCY" in inv["flags"]:
+                status = "HOLD_MISSING_CURRENCY"
+            elif "INVALID_DUE_DATE" in inv["flags"]:
+                status = "HOLD_INVALID_DATE"
 
             inv["book_status"] = status
             conn.execute(

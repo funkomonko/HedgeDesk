@@ -47,14 +47,13 @@
 | `ARCHITECTURE.md` | Mermaid architecture diagram + module map showing where data calls, retries, checkpoints, approvals, and cost/evidence ledgers sit. |
 | `HANDOFF.md` | This team handoff document. |
 
-### D. Reference PDFs & Legacy v1 Prototype Files (Do Not Wire Into Production)
+### D. Reference PDFs
 
 | File | Role / What It Does |
 | :--- | :--- |
 | `1 · Builder Handbook · ContextCon 05 BITS Pilani.pdf` | Official ContextCon 05 event handbook, schedule, rules, and Crustdata API quickstart. |
 | `ContextCon05_BITS_Problem_Statement.pdf` | Official problem statement defining the finals format (kill on stage, 5-min live fix, 4 judges: 2 CS + Ethics + Finance). |
 | `HedgeDesk Context Doc (ContextCon 05).pdf` | Team specification doc defining the 7-module design, math formulas, 28 edge cases, and 2-minute demo script. |
-| `hedgedesk/*.py` (`__init__.py`, `config.py`, `db.py`, `crustdata_client.py`, `fx_market.py`, `policy_engine.py`, `backtester.py`, `test_cases.py`, `cli.py`) & `hedgedesk_state.db` | **Superseded v1 prototype** created before `HedgeDesk Context Doc (ContextCon 05).pdf` was added. Not imported by `app.py` or `run.py`. **Keep `hedgedesk/usd_inr_ecb_history.json`**, and optionally remove the other v1 `.py` files and `hedgedesk_state.db` before final GitHub push for a spotless repo. |
 
 ---
 
@@ -94,7 +93,7 @@ $py = "C:\Users\Arjun Kumar\.anaconda-desktop\micromamba\envs\assistant\python.e
 
 ## 4. Pre-Freeze Checklist (Before 6:00 PM)
 
-1. **Optional Cleanup Before Git Push:** Delete the unused v1 files (`hedgedesk/*.py`, `hedgedesk_state.db`) while **keeping `hedgedesk/usd_inr_ecb_history.json`** (and keeping `.env` and `hedgedesk.db` gitignored).
+1. **Cleanup:** done. The unused v1 `hedgedesk/*.py` files were removed; `hedgedesk/usd_inr_ecb_history.json` stays (it is required).
 2. **GitHub Repo:** Initialize a public repo with commit history starting after 10:45 AM on 22 November 2026 and push all root modules, `static/index.html`, `policy.yaml`, `sample_invoices.csv`, `hedgedesk/usd_inr_ecb_history.json`, `README.md`, `ARCHITECTURE.md`, and `TESTS.md`.
 3. **Architecture Diagram Link:** Export the Mermaid diagram in `ARCHITECTURE.md` via Mermaid Live (`mermaid.live`) or Excalidraw and confirm the share link opens in an incognito window.
 4. **2-Minute Demo Video:** Record the 2-minute walkthrough on Loom / unlisted YouTube following Context Doc Page 20 (including live approval, manual `Ctrl+C` kill & restart showing zero duplicate payment, clickable evidence IDs, and backtest chart) and verify playback in a private window.
