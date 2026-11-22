@@ -1,0 +1,13 @@
+.venv
+.env
+.claude
+__pycache__
+*.pdf
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+demo
+image-*.png
+hedgedesk/*.py
+hedgedesk_state.db

@@ -21,8 +21,15 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
-POLICY_YAML_PATH = BASE_DIR / "policy.yaml"
-DB_FILE = BASE_DIR / "hedgedesk.db"
+# On Vercel the deployment filesystem is read-only except /tmp, so the SQLite DB and the
+# live-editable policy copy live there (per instance, reset on cold start). Locally nothing changes.
+ON_VERCEL = bool(os.getenv("VERCEL"))
+RUNTIME_DIR = Path("/tmp") if ON_VERCEL else BASE_DIR
+POLICY_YAML_PATH = RUNTIME_DIR / "policy.yaml"
+if ON_VERCEL and not POLICY_YAML_PATH.exists():
+    import shutil
+    shutil.copyfile(BASE_DIR / "policy.yaml", POLICY_YAML_PATH)
+DB_FILE = RUNTIME_DIR / "hedgedesk.db"
 CRUSTDATA_BASE = "https://api.crustdata.com"
 CRUSTDATA_VERSION = "2025-11-01"
 
