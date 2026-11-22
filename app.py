@@ -23,6 +23,7 @@ from sources import (
     get_crustdata_key,
     get_run_cost_summary,
     load_policy_yaml,
+    log_cost,
 )
 
 app = FastAPI(title="HedgeDesk — AI Treasury Analyst & Domestic Sourcing Desk", version="2.0.0")
@@ -78,10 +79,12 @@ def health():
             headers={"authorization": f"Bearer {get_crustdata_key()}", "x-api-version": "2025-11-01"},
             timeout=8.0,
         )
+        # Logged under its own run id so per-run job cost totals are unaffected.
+        log_cost("health_check", f"/account/credits (HTTP {r.status_code})", 0.0, 0.0)
         if r.status_code == 200:
             credits = r.json().get("account", {}).get("credits")
     except Exception:
-        pass
+        log_cost("health_check", "/account/credits (network error)", 0.0, 0.0)
     return {
         "status": "ok",
         "policy": load_policy_yaml(),
@@ -199,22 +202,51 @@ def get_backtest():
 
 
 def _parse_plain_text_invoice(text: str) -> Dict[str, Any]:
-    amt_m = re.search(r"(\$|USD|EUR|INR)\s*([\d,.]+(?:\s*(?:lakh|lac|crore))?)", text, re.IGNORECASE)
-    raw_amt = amt_m.group(0) if amt_m else "200000"
-    qty_m = re.search(r"(\d+)\s*(?:units?|bearings?|compressors?|pcs)", text, re.IGNORECASE)
-    qty = int(qty_m.group(1)) if qty_m else 400
-    dom_m = re.search(r"([a-zA-Z0-9-]+\.(?:com|de|in|co|org|net))", text, re.IGNORECASE)
+    """
+    Pull invoice fields out of a typed request. Anything the text does not state is left blank,
+    never defaulted: the pipeline then holds the invoice (missing amount, supplier or due date)
+    or skips the per-unit break-even (missing quantity) and says what is missing.
+    """
+    amt_m = re.search(
+        r"(\$|USD|EUR|INR)\s*([\d,]+(?:\.\d+)?)(?:\s*(lakh|lac|crore|cr|k|thousand|mn|million|bn|billion)\b)?([A-Za-z]?)",
+        text, re.IGNORECASE,
+    )
+    raw_amt = ""
+    if amt_m and not amt_m.group(4):
+        scale = (amt_m.group(3) or "").lower()
+        mult = {"k": 1e3, "thousand": 1e3, "mn": 1e6, "million": 1e6, "bn": 1e9, "billion": 1e9}.get(scale)
+        if mult:
+            # Expand Western scale words here; parse_amount_messy only knows lakh/crore.
+            num = float(amt_m.group(2).replace(",", "")) * mult
+            raw_amt = f"{amt_m.group(1)} {num:.2f}"
+        else:
+            # Plain number, or lakh/lac/crore/cr which parse_amount_messy normalises.
+            raw_amt = amt_m.group(0).strip()
+    # A number followed by an unknown unit (e.g. "$200x") is left blank so the invoice is held.
+    qty_m = re.search(r"(\d[\d,]*)\s*(?:units?|bearings?|compressors?|pcs|pieces)\b", text, re.IGNORECASE)
+    qty = qty_m.group(1).replace(",", "") if qty_m else ""
+    dom_m = re.search(r"\b([a-zA-Z0-9-]+\.(?:com|de|in|co|org|net))\b", text, re.IGNORECASE)
     dom = dom_m.group(1).lower() if dom_m else ""
-    sup_m = re.search(r"(?:owe|from|supplier|to)\s+([A-Z][A-Za-z0-9 &.-]{2,30})", text)
-    sup = sup_m.group(1).strip() if sup_m else (dom.split(".")[0].upper() if dom else "SKF GmbH")
+    # Supplier name: capitalised words after owe/from/supplier/to, stopping before an amount,
+    # a number, a bracketed domain, or a following clause ("for", "due", "on").
+    sup_m = re.search(
+        r"\b(?:owe|from|supplier|to)\s+([A-Z][A-Za-z0-9&.\- ]{1,40}?)"
+        r"(?=\s*(?:\(|,|\$|\d|\bUSD\b|\bEUR\b|\bINR\b|\bfor\b|\bdue\b|\bon\b|$))",
+        text,
+    )
+    sup = sup_m.group(1).strip() if sup_m else ""
     due_m = re.search(r"(\d{4}-\d{2}-\d{2})", text)
-    due = due_m.group(1) if due_m else "2027-01-21"
+    due = due_m.group(1) if due_m else ""
+    ccy = ""
+    if raw_amt:
+        tok = raw_amt.lower()
+        ccy = "EUR" if "eur" in tok else ("INR" if "inr" in tok else "USD")
     return {
         "invoice_id": f"INV-ASK-{hashlib.sha256(text.encode()).hexdigest()[:4].upper()}",
-        "doc_type": "forecast" if "forecast" in text.lower() or "po" in text.lower() else "confirmed",
+        "doc_type": "forecast" if re.search(r"\b(forecast|po|purchase order)\b", text, re.IGNORECASE) else "confirmed",
         "supplier_raw": sup,
         "supplier_domain": dom,
-        "currency": "EUR" if "eur" in raw_amt.lower() else ("INR" if "inr" in raw_amt.lower() else "USD"),
+        "currency": ccy,
         "amount_raw": raw_amt,
         "quantity_units": qty,
         "part_description": text[:100],

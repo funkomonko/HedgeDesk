@@ -14,11 +14,11 @@ The people who do this job today are an in-house treasury analyst, an FX advisor
 
 **Price:** ₹24,999 a month per company. A typical advisory retainer is around ₹45,000 a cycle.
 
-**Cost per job:** every Crustdata call is logged in the `cost_ledger` table with its credits and rupee cost. A re-run from cache costs nothing. A cold run of the 9-invoice demo book uses roughly 15–17 credits, about ₹80.
+**Cost per job:** every outbound call is logged in the `cost_ledger` table with its credits and rupee cost, including failed calls, retries and cache hits. A re-run from cache costs nothing. A cold run of the 9-invoice demo book uses roughly 15–17 credits, about ₹80.
 
 ## Input
 
-- A list of open invoices and purchase orders, as a CSV (see [`sample_invoices.csv`](sample_invoices.csv)) or a plain-English request typed into the web app, e.g. *"We owe SKF GmbH (skf.com) USD 200,000 for 400 bearings due 2027-01-21"*.
+- A list of open invoices and purchase orders, as a CSV (see [`sample_invoices.csv`](sample_invoices.csv)) or a plain-English request typed into the web app, e.g. *"We owe SKF GmbH (skf.com) USD 200,000 for 400 bearings due 2027-01-21"*. If a typed request leaves out the amount, the supplier or the due date, that invoice is held and the reason names the missing field. If it leaves out the quantity, the per-unit break-even is skipped.
 - The company's hedging policy in [`policy.yaml`](policy.yaml): allowed hedge ranges by tenor, the approval threshold, freshness and sanity limits, and the per-run budget.
 
 ## Finished result
@@ -56,7 +56,7 @@ All calls go through `sources.py`, which caches responses, retries on 429 and 5x
 
 What isn't live yet:
 
-- **Forward premia (1M/3M/6M).** These are modelled from the 2025–26 FBIL range, adjusted for current volatility. They are not fetched from FBIL. We couldn't get a parseable FBIL feed working in time. This is the biggest gap between the code and the plan.
+- **Forward premia (1M/3M/6M).** These are modelled from the 2025–26 FBIL range, adjusted for current volatility. They are not fetched from FBIL. We couldn't get a parseable FBIL feed working in time. The evidence ledger labels them as modelled, and forward rates in decisions are marked indicative until the bank quotes. This is the biggest gap between the code and the plan.
 - **Payments.** These go through a local stand-in that behaves like Razorpay test mode: it stores each payment against a receipt ID and looks it up before paying again. It doesn't call Razorpay's API yet.
 - **Bank forward requests and RFQs.** These are drafted and marked sent, but they go nowhere outside the app (in the event, only our team inbox would be allowed).
 

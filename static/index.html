@@ -4,121 +4,241 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>HedgeDesk — AI Treasury Analyst & Domestic Sourcing Desk</title>
+  <link rel="icon" href="/static/logo-mark.jpg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <style>
     :root {
-      --bg: #0b0f17; --panel: #121826; --panel2: #182032; --border: #253047;
-      --text: #e6edf7; --muted: #93a3bc; --accent: #3b82f6; --accent-soft: rgba(59,130,246,0.14);
-      --green: #10b981; --green-soft: rgba(16,185,129,0.14);
-      --amber: #f59e0b; --amber-soft: rgba(245,158,11,0.14);
-      --red: #ef4444; --red-soft: rgba(239,68,68,0.14);
-      --purple: #a855f7; --purple-soft: rgba(168,85,247,0.14);
-      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      /* Neutral ink palette taken from the black-and-white logo; colour is reserved for status. */
+      --bg: #f5f5f3; --panel: #ffffff; --panel2: #fafaf9; --sunken: #f4f4f2;
+      --border: #e7e5e2; --border-strong: #d6d3cf;
+      --text: #111110; --text-2: #3f3d3a; --muted: #77736d;
+      --ink: #111110; --ink-hover: #2b2a28;
+      --accent: #111110; --accent-soft: #f1f0ee;
+      --green: #15803d; --green-soft: #ecfdf3; --green-line: #bbf0cf;
+      --amber: #b45309; --amber-soft: #fff7e8; --amber-line: #fbdba7;
+      --red: #b42318; --red-soft: #fef2f1; --red-line: #fbc9c4;
+      --blue: #1d4ed8; --blue-soft: #eff4ff; --blue-line: #c7d7fe;
+      --purple: #6d28d9; --purple-soft: #f5f1ff; --purple-line: #ddd0fd;
+      --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
       --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --r-sm: 6px; --r: 10px; --r-lg: 14px;
+      --shadow: 0 1px 2px rgba(17,17,16,0.04), 0 1px 1px rgba(17,17,16,0.03);
+      --shadow-lg: 0 8px 24px -12px rgba(17,17,16,0.18);
     }
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: var(--sans); background: var(--bg); color: var(--text); line-height: 1.45; }
+    html { -webkit-font-smoothing: antialiased; }
+    body { margin: 0; font-family: var(--sans); background: var(--bg); color: var(--text); line-height: 1.5; font-size: 14px; font-feature-settings: "cv11", "ss01"; }
+    .i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; vertical-align: -3px; }
+    .i.sm { width: 14px; height: 14px; }
+
+    /* Top bar */
     .topbar {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 14px 24px; background: #0e1420; border-bottom: 1px solid var(--border);
-      position: sticky; top: 0; z-index: 20; flex-wrap: wrap; gap: 10px;
+      display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;
+      padding: 12px 32px; background: rgba(255,255,255,0.88); backdrop-filter: saturate(180%) blur(10px);
+      border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 20;
     }
-    .brand { display: flex; align-items: center; gap: 12px; }
-    .logo { width: 34px; height: 34px; border-radius: 8px; background: linear-gradient(135deg, #2563eb, #10b981); display: grid; place-items: center; font-weight: 800; }
-    .brand h1 { margin: 0; font-size: 18px; }
-    .sub { font-size: 12px; color: var(--muted); }
+    .brand { display: flex; align-items: center; gap: 14px; min-width: 0; }
+    .logo-img { height: 44px; width: auto; mix-blend-mode: multiply; }
+    .logo { display: none; width: 40px; height: 40px; border-radius: 8px; background: var(--ink); color: #fff; place-items: center; font-weight: 800; letter-spacing: -0.02em; }
+    .brand h1 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.015em; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .brand h1 .tag { font-size: 13px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+    .sub { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
+    .sub strong { color: var(--text-2); font-weight: 600; }
     .top-badges { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .badge-wrap { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+    .top-badges .pill { font-size: 12px; padding: 5px 10px; }
+
+    /* Pills: colour only means status */
     .pill {
-      padding: 4px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
-      border: 1px solid var(--border); background: var(--panel); font-family: var(--mono);
+      display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px;
+      font-size: 11.5px; font-weight: 600; line-height: 1.6; white-space: nowrap;
+      border: 1px solid var(--border); background: var(--panel2); color: var(--text-2);
+      font-family: var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
     }
-    .pill.green { border-color: rgba(16,185,129,0.45); color: #34d399; background: var(--green-soft); }
-    .pill.blue { border-color: rgba(59,130,246,0.45); color: #60a5fa; background: var(--accent-soft); }
-    .pill.amber { border-color: rgba(245,158,11,0.45); color: #fbbf24; background: var(--amber-soft); }
-    .pill.red { border-color: rgba(239,68,68,0.45); color: #f87171; background: var(--red-soft); }
-    .pill.purple { border-color: rgba(168,85,247,0.45); color: #c084fc; background: var(--purple-soft); }
+    .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.85; }
+    .pill.green { border-color: var(--green-line); color: var(--green); background: var(--green-soft); }
+    .pill.blue { border-color: var(--blue-line); color: var(--blue); background: var(--blue-soft); }
+    .pill.amber { border-color: var(--amber-line); color: var(--amber); background: var(--amber-soft); }
+    .pill.red { border-color: var(--red-line); color: var(--red); background: var(--red-soft); }
+    .pill.purple { border-color: var(--purple-line); color: var(--purple); background: var(--purple-soft); }
 
-    .container { max-width: 1420px; margin: 0 auto; padding: 18px 24px 60px; }
-    .control-deck { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+    .container { max-width: 1440px; margin: 0 auto; padding: 24px 32px 64px; }
+
+    /* Control deck */
+    .control-deck { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 20px; margin-bottom: 24px; box-shadow: var(--shadow); }
+    .deck-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+    .eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
     button {
-      background: var(--panel2); color: var(--text); border: 1px solid var(--border);
-      padding: 8px 12px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 12.5px;
+      display: inline-flex; align-items: center; gap: 7px; font-family: var(--sans);
+      background: var(--panel); color: var(--text); border: 1px solid var(--border-strong);
+      padding: 8px 14px; border-radius: var(--r-sm); cursor: pointer; font-weight: 600; font-size: 13px;
+      box-shadow: var(--shadow); transition: background .15s, border-color .15s, transform .05s;
     }
-    button:hover { border-color: var(--accent); background: #1e293b; }
-    button.primary { background: #2563eb; border-color: #3b82f6; color: #fff; }
-    button.success { background: rgba(16,185,129,0.18); border-color: rgba(16,185,129,0.5); color: #6ee7b7; }
-    .toggle-row { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); padding-top: 8px; border-top: 1px solid var(--border); align-items: center; }
-    .toggle-row label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
-    .custom-box { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-    .custom-box input[type="text"] { flex: 1; min-width: 280px; background: #0c121e; border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+    button:hover { background: var(--panel2); border-color: #bfbab4; }
+    button:active { transform: translateY(1px); }
+    button:focus-visible, input:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+    button.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+    button.primary:hover { background: var(--ink-hover); }
+    button.success { background: var(--green); border-color: var(--green); color: #fff; }
+    button.success:hover { background: #116932; }
+    #loadingTxt { display: none; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; color: var(--text-2); }
+    .spinner { width: 14px; height: 14px; border: 2px solid var(--border-strong); border-top-color: var(--ink); border-radius: 50%; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
-    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
-    .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 13px 15px; }
-    .kpi .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-    .kpi .val { font-size: 20px; font-weight: 700; margin: 4px 0; font-family: var(--mono); }
-    .kpi .hint { font-size: 11.5px; color: var(--muted); }
+    .custom-box { display: flex; gap: 8px; flex-wrap: wrap; }
+    .input-wrap { flex: 1; min-width: 280px; position: relative; display: flex; align-items: center; }
+    .input-wrap .i { position: absolute; left: 12px; color: var(--muted); }
+    .custom-box input[type="text"] {
+      width: 100%; background: var(--panel); border: 1px solid var(--border-strong); color: var(--text);
+      border-radius: var(--r-sm); padding: 9px 12px 9px 36px; font-size: 13.5px; font-family: var(--sans);
+    }
+    .custom-box input::placeholder { color: #a8a39c; }
 
-    .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 14px; flex-wrap: wrap; }
-    .tab-btn { background: transparent; border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 9px 14px; color: var(--muted); font-weight: 600; }
-    .tab-btn.active { color: #fff; border-bottom-color: var(--accent); background: rgba(59,130,246,0.08); }
-    .tab-panel { display: none; }
+    .toggle-row {
+      display: flex; gap: 6px 8px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-2);
+      margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--border); align-items: center;
+    }
+    .toggle-row .eyebrow { margin-right: 6px; }
+    .toggle-row label {
+      display: inline-flex; align-items: center; gap: 7px; cursor: pointer; padding: 5px 10px;
+      border: 1px solid var(--border); border-radius: 999px; background: var(--panel2); transition: border-color .15s;
+    }
+    .toggle-row label:hover { border-color: var(--border-strong); }
+    .toggle-row input[type="checkbox"] { accent-color: var(--ink); margin: 0; }
+    .toggle-row code { font-family: var(--mono); font-size: 11.5px; }
+    .toggle-row input[type="number"] { width: 64px; background: var(--panel); color: var(--text); border: 1px solid var(--border-strong); border-radius: 4px; padding: 2px 6px; font-family: var(--mono); font-size: 12px; }
+
+    .policy-drawer { display: none; margin-top: 16px; padding: 16px; background: var(--sunken); border-radius: var(--r); gap: 12px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+    .policy-drawer.open { display: grid; }
+    .policy-drawer label { display: block; font-size: 11.5px; font-weight: 500; color: var(--muted); margin-bottom: 4px; }
+    .policy-drawer input { width: 100%; background: var(--panel); border: 1px solid var(--border-strong); color: var(--text); border-radius: var(--r-sm); padding: 7px 9px; font-family: var(--mono); font-size: 13px; }
+
+    /* KPIs */
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    @media (min-width: 1100px) { .kpi-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+    .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 16px 18px; box-shadow: var(--shadow); }
+    .kpi .label { font-size: 12px; font-weight: 500; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+    .kpi .label .ico { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; background: var(--sunken); color: var(--text-2); }
+    .kpi .val { font-size: 24px; font-weight: 600; margin: 10px 0 2px; font-family: var(--mono); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; color: var(--text) !important; }
+    .kpi .hint { font-size: 12px; color: var(--muted); }
+    .kpi.k-green .ico { background: var(--green-soft); color: var(--green); }
+    .kpi.k-amber .ico { background: var(--amber-soft); color: var(--amber); }
+    .kpi.k-purple .ico { background: var(--purple-soft); color: var(--purple); }
+    .kpi.k-blue .ico { background: var(--blue-soft); color: var(--blue); }
+
+    /* Tabs: segmented control */
+    .tabs { display: flex; gap: 2px; padding: 4px; background: #ebeae7; border-radius: var(--r); margin-bottom: 16px; flex-wrap: wrap; width: fit-content; max-width: 100%; }
+    .tab-btn { background: transparent; border: 1px solid transparent; box-shadow: none; border-radius: 7px; padding: 7px 12px; color: var(--muted); font-weight: 600; font-size: 13px; }
+    .tab-btn:hover { background: rgba(255,255,255,0.6); border-color: transparent; color: var(--text); }
+    .tab-btn.active { color: var(--text); background: var(--panel); border-color: var(--border); box-shadow: 0 1px 3px rgba(17,17,16,0.08); }
+    .tab-panel { display: none; animation: fade .18s ease; }
     .tab-panel.active { display: block; }
+    @keyframes fade { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
 
-    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-    .card h2 { margin: 0 0 10px; font-size: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
-    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-    th, td { text-align: left; padding: 9px; border-bottom: 1px solid var(--border); vertical-align: top; }
-    th { color: var(--muted); font-size: 11px; text-transform: uppercase; background: #0e1420; }
-    .mono { font-family: var(--mono); }
-    .small { font-size: 11.5px; color: var(--muted); }
+    /* Cards & tables */
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow); }
+    .card h2 { margin: 0 0 14px; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--r); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+    th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: #fbfbfa; }
+    th { color: var(--muted); font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em; background: var(--panel2); position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+    td strong { font-weight: 600; }
+    .mono { font-family: var(--mono); font-size: 12.5px; letter-spacing: -0.01em; }
+    .small { font-size: 12px; color: var(--muted); }
+    td .small { line-height: 1.55; }
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
     @media (max-width: 980px) { .grid-2 { grid-template-columns: 1fr; } }
-    pre.rfq { background: #0a0f1a; border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-family: var(--mono); font-size: 11.5px; white-space: pre-wrap; color: #cbd5e1; }
-    .policy-drawer { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); gap: 10px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
-    .policy-drawer.open { display: grid; }
-    .policy-drawer label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px; }
-    .policy-drawer input { width: 100%; background: #0c121e; border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px; font-family: var(--mono); }
-    .ev-link { cursor: pointer; text-decoration: underline; color: #60a5fa; font-family: var(--mono); font-size: 11px; }
+    pre.rfq { background: var(--sunken); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 12px; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; color: var(--text-2); }
+    details summary { cursor: pointer; color: var(--text-2); font-size: 12.5px; font-weight: 600; }
+    .ev-link { cursor: pointer; display: inline-block; margin: 4px 4px 0 0; padding: 1px 6px; border-radius: 4px; background: var(--sunken); border: 1px solid var(--border); color: var(--text-2); font-family: var(--mono); font-size: 11px; text-decoration: none; }
+    .ev-link:hover { background: var(--ink); color: #fff; border-color: var(--ink); }
+    #stepLogs { margin: 0; padding-left: 0; list-style: none; counter-reset: step; }
+    #stepLogs li { position: relative; padding: 6px 0 6px 30px; counter-increment: step; font-family: var(--mono); font-size: 12px; color: var(--text-2); }
+    #stepLogs li::before { content: counter(step); position: absolute; left: 0; top: 6px; width: 20px; height: 20px; border-radius: 50%; background: var(--ink); color: #fff; font-size: 10.5px; display: grid; place-items: center; }
+    #secondApprover { background: var(--panel); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--r-sm); padding: 6px 10px; font-size: 12.5px; font-family: var(--sans); min-width: 240px; }
+    #btHeadline { padding: 14px 16px; background: var(--sunken); border-left: 3px solid var(--ink); border-radius: var(--r-sm); margin-bottom: 16px; font-size: 13.5px; color: var(--text-2); }
+    #btChart { background: var(--panel2); border: 1px solid var(--border); border-radius: var(--r); padding: 12px; }
+    #btLimits { margin: 14px 0 0; padding-left: 18px; }
+    .alt-maker { background: var(--panel2); padding: 14px; border-radius: var(--r); margin-top: 10px; border: 1px solid var(--border); }
+    .ext-ref { color: var(--green); font-weight: 600; }
+    .bank-warn { color: var(--red); }
+    .cut { color: var(--green); font-weight: 600; }
+    @media (max-width: 720px) { .topbar, .container { padding-left: 16px; padding-right: 16px; } }
   </style>
 </head>
 <body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-play" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></symbol>
+    <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></symbol>
+    <symbol id="i-scale" viewBox="0 0 24 24"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></symbol>
+    <symbol id="i-factory" viewBox="0 0 24 24"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M17 18h1"/><path d="M12 18h1"/><path d="M7 18h1"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+    <symbol id="i-coins" viewBox="0 0 24 24"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></symbol>
+    <symbol id="i-flask" viewBox="0 0 24 24"><path d="M10 2v7.31"/><path d="M14 9.3V1.99"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/><path d="M5.52 16h12.96"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+    <symbol id="i-trend" viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></symbol>
+    <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></symbol>
+    <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/></symbol>
+    <symbol id="i-steps" viewBox="0 0 24 24"><path d="M3 3h6v6H3z"/><path d="M15 15h6v6h-6z"/><path d="M9 6h4a2 2 0 0 1 2 2v7"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+  </svg>
+
   <header class="topbar">
     <div class="brand">
+      <img class="logo-img" src="/static/logo-mark.jpg" alt="HedgeDesk logo" onerror="this.style.display='none';this.nextElementSibling.style.display='grid';" />
       <div class="logo">HD</div>
       <div>
-        <h1>HedgeDesk <span class="small" style="font-weight:400;">— AI Treasury Analyst &amp; Domestic Sourcing Desk</span></h1>
+        <h1>HedgeDesk <span class="tag">AI Treasury Analyst &amp; Domestic Sourcing Desk</span></h1>
         <div class="sub">Buyer: <strong id="clientName">BharatPrecision Components &amp; 3PL Imports Pvt. Ltd.</strong> · Policy: <span id="policyVer" class="mono">FEMA-CORP-TREASURY-2026.2</span></div>
       </div>
     </div>
     <div class="top-badges">
-      <span class="pill green" id="spotBadge">USD/INR: Loading...</span>
-      <span class="pill blue" id="creditsBadge">Crustdata: ...</span>
-      <span class="pill amber" id="jobCostBadge">Job Cost: ₹0.00</span>
+      <span class="badge-wrap"><svg class="i sm"><use href="#i-trend"/></svg><span class="pill green" id="spotBadge">USD/INR: Loading...</span></span>
+      <span class="badge-wrap"><svg class="i sm"><use href="#i-db"/></svg><span class="pill blue" id="creditsBadge">Crustdata: ...</span></span>
+      <span class="badge-wrap"><svg class="i sm"><use href="#i-receipt"/></svg><span class="pill amber" id="jobCostBadge">Job Cost: ₹0.00</span></span>
     </div>
   </header>
 
   <main class="container">
     <section class="control-deck">
-      <div class="btn-row">
-        <button class="primary" onclick="runDemo('bearings_demo')">Run Demo Story</button>
-        <button onclick="document.getElementById('csvInput').click()">Upload Invoices CSV</button>
-        <input type="file" id="csvInput" accept=".csv" style="display:none;" onchange="uploadCsv(this)" />
-        <button onclick="document.getElementById('policyDrawer').classList.toggle('open')">Edit Hedge Parameters</button>
-        <span id="loadingTxt" class="mono small" style="display:none;color:#60a5fa;">Running Crustdata + RBI/ECB pipeline...</span>
+      <div class="deck-head">
+        <div class="btn-row">
+          <button class="primary" onclick="runDemo('bearings_demo')"><svg class="i"><use href="#i-play"/></svg>Run Demo Story</button>
+          <button onclick="document.getElementById('csvInput').click()"><svg class="i"><use href="#i-upload"/></svg>Upload Invoices CSV</button>
+          <input type="file" id="csvInput" accept=".csv" style="display:none;" onchange="uploadCsv(this)" />
+          <button onclick="document.getElementById('policyDrawer').classList.toggle('open')"><svg class="i"><use href="#i-sliders"/></svg>Edit Hedge Parameters</button>
+        </div>
+        <span id="loadingTxt"><span class="spinner"></span>Running Crustdata + ECB/Frankfurter pipeline...</span>
+      </div>
+
+      <div class="custom-box">
+        <div class="input-wrap"><svg class="i"><use href="#i-message"/></svg><input type="text" id="plainAsk" placeholder="Plain-English request" /></div>
+        <button onclick="runPlainAsk()"><svg class="i"><use href="#i-send"/></svg>Run Unseen Request</button>
       </div>
 
       <div class="toggle-row">
+        <span class="eyebrow"><svg class="i sm"><use href="#i-flask"/></svg>Simulate</span>
         <label><input type="checkbox" id="chkDown" /> Case 18*: FX Feeds Down (<code>cannot verify</code>)</label>
         <label><input type="checkbox" id="chkStale" /> Case 19: Stale Rate (&gt;1 biz day hold)</label>
         <label><input type="checkbox" id="chkNonsense" /> Case 20: Corrupted 40% Feed (sanity reject)</label>
         <label><input type="checkbox" id="chkDisagree" /> Case 22: Sources Disagree Flag</label>
         <label><input type="checkbox" id="chk402" /> Case 26: Simulate 402 Credits Out</label>
-        <label>Cost Limit: <input type="number" id="costLimit" value="25" min="0.1" step="0.5" style="width:60px;background:#0c121e;color:#fff;border:1px solid var(--border);border-radius:4px;padding:2px 5px;font-family:var(--mono);" /> cr</label>
-      </div>
-
-      <div class="custom-box">
-        <input type="text" id="plainAsk" placeholder="Plain-English request" />
-        <button onclick="runPlainAsk()">Run Unseen Request</button>
+        <label>Cost Limit: <input type="number" id="costLimit" value="25" min="0.1" step="0.5" /> cr</label>
       </div>
 
       <div id="policyDrawer" class="policy-drawer">
@@ -127,44 +247,44 @@
         <div><label>Customs Duty (%)</label><input type="number" step="0.5" id="polDuty" value="7.5" /></div>
         <div><label>Dual Approval &gt; (₹)</label><input type="number" step="1000000" id="polDual" value="10000000" /></div>
         <div><label>Run Budget (credits)</label><input type="number" step="1" id="polBudget" value="25" /></div>
-        <div style="display:flex;align-items:flex-end;"><button class="success" style="width:100%;" onclick="savePolicy()">Save Parameters</button></div>
+        <div style="display:flex;align-items:flex-end;"><button class="success" style="width:100%;justify-content:center;" onclick="savePolicy()">Save Parameters</button></div>
       </div>
     </section>
 
     <section class="kpi-grid">
-      <div class="kpi"><div class="label">Total Hedged Exposure</div><div class="val" id="kHedged">$0</div><div class="hint" id="kCount">0 invoices processed</div></div>
-      <div class="kpi"><div class="label">95% FX VaR Exposure</div><div class="val" style="color:#34d399;" id="kVar">₹0</div><div class="hint" id="kFwdCost">Fwd carry cost: ₹0</div></div>
-      <div class="kpi"><div class="label">Holds &amp; Fraud Catches</div><div class="val" style="color:#fbbf24;" id="kHolds">0</div><div class="hint">Duplicates / Lookalikes / Bank Fraud</div></div>
-      <div class="kpi"><div class="label">Measured Job Cost</div><div class="val" style="color:#c084fc;" id="kCost">₹0.00</div><div class="hint" id="kCredits">0.00 Crustdata credits</div></div>
-      <div class="kpi"><div class="label">Finance Feasibility</div><div class="val" style="color:#60a5fa;" id="kSub">₹24,999/mo</div><div class="hint" id="kMargin">vs ₹45,000 manual advisor</div></div>
+      <div class="kpi"><div class="label"><span class="ico"><svg class="i sm"><use href="#i-shield"/></svg></span>Total Hedged Exposure</div><div class="val" id="kHedged">$0</div><div class="hint" id="kCount">0 invoices processed</div></div>
+      <div class="kpi k-green"><div class="label"><span class="ico"><svg class="i sm"><use href="#i-activity"/></svg></span>95% FX VaR Exposure</div><div class="val" id="kVar">₹0</div><div class="hint" id="kFwdCost">Fwd carry cost: ₹0</div></div>
+      <div class="kpi k-amber"><div class="label"><span class="ico"><svg class="i sm"><use href="#i-alert"/></svg></span>Holds &amp; Fraud Catches</div><div class="val" id="kHolds">0</div><div class="hint">Duplicates / Lookalikes / Bank Fraud</div></div>
+      <div class="kpi k-purple"><div class="label"><span class="ico"><svg class="i sm"><use href="#i-coins"/></svg></span>Measured Job Cost</div><div class="val" id="kCost">₹0.00</div><div class="hint" id="kCredits">0.00 Crustdata credits</div></div>
+      <div class="kpi k-blue"><div class="label"><span class="ico"><svg class="i sm"><use href="#i-wallet"/></svg></span>Finance Feasibility</div><div class="val" id="kSub">₹24,999/mo</div><div class="hint" id="kMargin">vs ₹45,000 manual advisor</div></div>
     </section>
 
     <nav class="tabs">
-      <button class="tab-btn active" onclick="switchTab('tBook', this)">1. Exposure Book</button>
-      <button class="tab-btn" onclick="switchTab('tDec', this)">2. Hedge Decisions</button>
-      <button class="tab-btn" onclick="switchTab('tAlt', this)">3. Domestic Alternatives</button>
-      <button class="tab-btn" onclick="switchTab('tOut', this)">4. Approvals &amp; Outbox</button>
-      <button class="tab-btn" onclick="switchTab('tBack', this)">5. 18M RBI/ECB Backtest</button>
-      <button class="tab-btn" onclick="switchTab('tEv', this)">6. Evidence &amp; Cost Ledger</button>
+      <button class="tab-btn active" onclick="switchTab('tBook', this)"><svg class="i sm"><use href="#i-book"/></svg>1. Exposure Book</button>
+      <button class="tab-btn" onclick="switchTab('tDec', this)"><svg class="i sm"><use href="#i-scale"/></svg>2. Hedge Decisions</button>
+      <button class="tab-btn" onclick="switchTab('tAlt', this)"><svg class="i sm"><use href="#i-factory"/></svg>3. Domestic Alternatives</button>
+      <button class="tab-btn" onclick="switchTab('tOut', this)"><svg class="i sm"><use href="#i-check"/></svg>4. Approvals &amp; Outbox</button>
+      <button class="tab-btn" onclick="switchTab('tBack', this)"><svg class="i sm"><use href="#i-chart"/></svg>5. 18M ECB Backtest</button>
+      <button class="tab-btn" onclick="switchTab('tEv', this)"><svg class="i sm"><use href="#i-file"/></svg>6. Evidence &amp; Cost Ledger</button>
     </nav>
 
     <section id="tBook" class="tab-panel active">
       <div class="card">
         <h2><span>Exposure Book</span><span class="mono small" id="runLabel"></span></h2>
-        <div style="overflow-x:auto;">
+        <div class="table-wrap">
           <table>
             <thead><tr><th>Invoice / Type</th><th>Supplier &amp; Crustdata KYB</th><th>Amount / Due</th><th>Flags &amp; Bank Fraud Check</th><th>Book Status</th></tr></thead>
             <tbody id="tbBook"><tr><td colspan="5" class="small">Click "Run Demo Story" above to start.</td></tr></tbody>
           </table>
         </div>
       </div>
-      <div class="card"><h2>Execution Step Checkpoints</h2><ul id="stepLogs" class="small"></ul></div>
+      <div class="card"><h2><span style="display:flex;align-items:center;gap:8px;"><svg class="i"><use href="#i-steps"/></svg>Execution Step Checkpoints</span></h2><ul id="stepLogs" class="small"></ul></div>
     </section>
 
     <section id="tDec" class="tab-panel">
       <div class="card">
         <h2><span>Deterministic Policy Decisions</span></h2>
-        <div style="overflow-x:auto;">
+        <div class="table-wrap">
           <table>
             <thead><tr><th>Invoice / Bucket</th><th>Action &amp; Clause</th><th>Range &amp; Hedge %</th><th>Risk% vs Cost% / VaR</th><th>Forward Rate &amp; Cost</th><th>Reason &amp; Clickable Evidence</th></tr></thead>
             <tbody id="tbDec"></tbody>
@@ -181,9 +301,9 @@
       <div class="card">
         <h2>
           <span>Idempotent Approval Queue &amp; Outbox (Razorpay Test Mode)</span>
-          <span class="small">Maker-Checker Approver 2: <input type="text" id="secondApprover" placeholder="e.g. MD / Director (for > ₹1 Cr)" style="background:#0c121e;color:#fff;border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-size:12px;" /></span>
+          <span class="small" style="display:flex;align-items:center;gap:8px;"><svg class="i sm"><use href="#i-user"/></svg>Maker-Checker Approver 2: <input type="text" id="secondApprover" placeholder="e.g. MD / Director (for > ₹1 Cr)" /></span>
         </h2>
-        <div style="overflow-x:auto;">
+        <div class="table-wrap">
           <table>
             <thead><tr><th>Kind</th><th>Instruction &amp; Invoice</th><th>Notional</th><th>State</th><th>Idempotency Key &amp; External Ref</th><th>Action</th></tr></thead>
             <tbody id="tbOut"></tbody>
@@ -194,16 +314,18 @@
 
     <section id="tBack" class="tab-panel">
       <div class="card">
-        <h2><span>18-Month Point-in-Time Historical Backtest</span><button onclick="loadBacktest()">Recompute Backtest</button></h2>
-        <div id="btHeadline" style="padding:10px 14px;background:var(--accent-soft);border:1px solid rgba(59,130,246,0.35);border-radius:8px;margin-bottom:12px;font-size:13.5px;"></div>
+        <h2><span>18-Month Point-in-Time Historical Backtest</span><button onclick="loadBacktest()"><svg class="i sm"><use href="#i-refresh"/></svg>Recompute Backtest</button></h2>
+        <div id="btHeadline"></div>
         <div class="grid-2">
-          <div id="btChart" style="background:#0c121e;border:1px solid var(--border);border-radius:8px;padding:10px;"></div>
-          <table>
-            <thead><tr><th>Strategy</th><th>Mean Rate</th><th>Worst Month</th><th>95% CVaR</th><th>Avg Cost (p/$)</th><th>Cut vs Never</th></tr></thead>
-            <tbody id="tbBt"></tbody>
-          </table>
+          <div id="btChart"></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Strategy</th><th>Mean Rate</th><th>Worst Month</th><th>95% CVaR</th><th>Avg Cost (p/$)</th><th>Cut vs Never</th></tr></thead>
+              <tbody id="tbBt"></tbody>
+            </table>
+          </div>
         </div>
-        <ul id="btLimits" class="small" style="margin-top:10px;"></ul>
+        <ul id="btLimits" class="small"></ul>
       </div>
     </section>
 
@@ -211,13 +333,13 @@
       <div class="grid-2">
         <div class="card">
           <h2>Source Evidence Ledger</h2>
-          <div style="max-height:520px;overflow-y:auto;">
+          <div class="table-wrap" style="max-height:520px;overflow-y:auto;">
             <table><thead><tr><th>ID</th><th>Source &amp; Field</th><th>Value &amp; Date</th></tr></thead><tbody id="tbEv"></tbody></table>
           </div>
         </div>
         <div class="card">
           <h2>API Cost Ledger</h2>
-          <div style="max-height:520px;overflow-y:auto;">
+          <div class="table-wrap" style="max-height:520px;overflow-y:auto;">
             <table><thead><tr><th>Endpoint</th><th>Credits</th><th>INR Cost</th><th>Timestamp</th></tr></thead><tbody id="tbCost"></tbody></table>
           </div>
         </div>
@@ -275,7 +397,7 @@
     }
 
     async function runDemo(mode, rawText=null) {
-      document.getElementById("loadingTxt").style.display = "inline";
+      document.getElementById("loadingTxt").style.display = "inline-flex";
       try {
         const res = await fetch("/api/run", {
           method: "POST", headers: {"Content-Type": "application/json"},
@@ -302,7 +424,7 @@
       if (!inp.files.length) return;
       const fd = new FormData();
       fd.append("file", inp.files[0]);
-      document.getElementById("loadingTxt").style.display = "inline";
+      document.getElementById("loadingTxt").style.display = "inline-flex";
       try {
         const r = await fetch("/api/upload-csv", { method: "POST", body: fd });
         const d = await r.json();
@@ -359,7 +481,7 @@
           <td><strong class="mono">${inv.invoice_id}</strong><br/>${pill(inv.doc_type, inv.doc_type==='confirmed'?'blue':'purple')}<br/><span class="small">${inv.part_description}</span></td>
           <td><strong>${sup.legal_name || inv.supplier_raw}</strong><br/><span class="small mono">ID: ${sup.supplier_id||'none'} · ${sup.primary_domain||'no domain'}</span><br/>${pill('risk='+sup.risk_flag, sup.risk_flag==='high'?'red':'green')} <span class="small">${sup.headcount?sup.headcount.toLocaleString()+' emp':''}</span></td>
           <td class="mono"><strong>${inv.currency} ${Number(inv.amount_usd).toLocaleString()}</strong><br/><span class="small">Due: ${inv.due_date||'MISSING'} (${inv.tenor_days ?? '?'}d)</span>${inv.parse_note?`<br/><span class="small">${inv.parse_note}</span>`:''}</td>
-          <td>${(inv.flags||[]).map(f=>pill(f,'amber')).join(' ')}${bc.has_bank_change?`<br/><span class="small" style="color:#f87171;">${bc.reason}</span>`:''}${inv.dup_of?`<br/><span class="small">dup_of=${inv.dup_of}</span>`:''}</td>
+          <td>${(inv.flags||[]).map(f=>pill(f,'amber')).join(' ')}${bc.has_bank_change?`<br/><span class="small bank-warn">${bc.reason}</span>`:''}${inv.dup_of?`<br/><span class="small">dup_of=${inv.dup_of}</span>`:''}</td>
           <td>${pill(inv.book_status, col)}</td>
         </tr>`;
       }).join("");
@@ -380,14 +502,15 @@
 
       document.getElementById("altContainer").innerHTML = Object.entries(d.alternatives || {}).map(([invId, alt]) => {
         if (alt.status === "SKIPPED") return "";
+        if (alt.status === "CANNOT_VERIFY_UNIT_PRICE") return `<div class="card"><h2><span>${invId} — ${alt.part_description||''}</span>${pill('CANNOT VERIFY','amber')}</h2><div class="small">${alt.note}</div></div>`;
         const makers = (alt.makers || []).map(mk => `
-          <div style="background:var(--panel2);padding:12px;border-radius:8px;margin-top:8px;border:1px solid var(--border);">
+          <div class="alt-maker">
             <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;">
               <div><strong>${mk.name}</strong> ${pill('MAKER · '+mk.headcount+' emp','green')} <span class="small mono">ID:${mk.crustdata_company_id} · ${mk.hq}</span></div>
               <div>${pill(mk.price_status,'amber')} <span class="mono small">Target &lt;= ₹${Number(alt.break_even_inr).toLocaleString("en-IN")}/unit</span></div>
             </div>
             <div class="small" style="margin:6px 0;">${mk.classification_evidence}</div>
-            <details><summary style="cursor:pointer;color:#60a5fa;font-size:12px;">View Drafted RFQ Email (Team Inbox)</summary><pre class="rfq">${mk.rfq_draft}</pre></details>
+            <details><summary>View Drafted RFQ Email (Team Inbox)</summary><pre class="rfq">${mk.rfq_draft}</pre></details>
           </div>`).join("");
         const traders = (alt.traders_excluded || []).map(tr => `<div class="small" style="margin-top:6px;">${pill('TRADER EXCLUDED','red')} <strong>${tr.name}</strong> — ${tr.classification_evidence}</div>`).join("");
         return `<div class="card"><h2><span>${invId} — ${alt.part_description}</span>${pill('Domestic Break-Even <= ₹'+Number(alt.break_even_inr).toLocaleString('en-IN')+'/unit','green')}</h2><div class="small">Hedged Landed Import Cost: <strong class="mono">₹${Number(alt.landed_import_inr).toLocaleString('en-IN')}/unit</strong></div>${makers}${traders}</div>`;
@@ -415,7 +538,7 @@
           <td><strong>${p.title||o.kind}</strong><br/><span class="small mono">Invoice: ${o.invoice_id}</span></td>
           <td class="mono">₹${Number(p.inr_value||0).toLocaleString("en-IN")}</td>
           <td>${pill(o.state.toUpperCase(), col)}</td>
-          <td class="mono small">${o.idem_key}<br/>${o.external_ref?'<strong style="color:#34d399;">'+o.external_ref+'</strong>':''}</td>
+          <td class="mono small">${o.idem_key}<br/>${o.external_ref?'<strong class="ext-ref">'+o.external_ref+'</strong>':''}</td>
           <td>${btns}</td>
         </tr>`;
       }).join("");
@@ -451,7 +574,7 @@
       const bt = await (await fetch("/api/backtest")).json();
       document.getElementById("btHeadline").innerHTML = `<strong>${bt.date_range} (${bt.monthly_windows} monthly $100k invoices, spot ₹${bt.spot_start} → ₹${bt.spot_end}):</strong> ${bt.headline}`;
       document.getElementById("tbBt").innerHTML = Object.values(bt.strategies || {}).map(s => `
-        <tr><td><strong>${s.name}</strong></td><td class="mono">₹${s.mean_landed_rate}</td><td class="mono">₹${s.worst_month_overrun_inr_lakh}L</td><td class="mono">₹${s.cvar_95_overrun_inr_lakh}L</td><td class="mono">${s.avg_hedging_cost_paise_per_usd}p</td><td class="mono" style="color:#34d399;">${s.worst_month_cut_vs_never_pct}%</td></tr>
+        <tr><td><strong>${s.name}</strong></td><td class="mono">₹${s.mean_landed_rate}</td><td class="mono">₹${s.worst_month_overrun_inr_lakh}L</td><td class="mono">₹${s.cvar_95_overrun_inr_lakh}L</td><td class="mono">${s.avg_hedging_cost_paise_per_usd}p</td><td class="mono cut">${s.worst_month_cut_vs_never_pct}%</td></tr>
       `).join("");
       document.getElementById("btLimits").innerHTML = (bt.assumptions_and_limits || []).map(a => `<li>${a}</li>`).join("");
       const pts = bt.daily_spot_sample || [];
@@ -459,7 +582,7 @@
         const w = 520, h = 210, pad = 26, vals = pts.map(p => p.rate);
         const minV = Math.min(...vals)-0.5, maxV = Math.max(...vals)+0.5;
         const poly = pts.map((p,i) => `${(pad+(i/(pts.length-1))*(w-2*pad)).toFixed(1)},${(h-pad-((p.rate-minV)/(maxV-minV))*(h-2*pad)).toFixed(1)}`).join(" ");
-        document.getElementById("btChart").innerHTML = `<svg viewBox="0 0 ${w} ${h}" style="width:100%;"><polyline fill="none" stroke="#3b82f6" stroke-width="2.4" points="${poly}" /><text x="${pad}" y="18" fill="#93a3bc" font-size="11" font-family="monospace">Peak: ₹${Math.max(...vals).toFixed(2)} (+${bt.inr_depreciation_pct}%)</text><text x="${pad}" y="${h-6}" fill="#93a3bc" font-size="11" font-family="monospace">${pts[0].date} (₹${vals[0].toFixed(2)}) → ${pts[pts.length-1].date} (₹${vals[vals.length-1].toFixed(2)})</text></svg>`;
+        document.getElementById("btChart").innerHTML = `<svg viewBox="0 0 ${w} ${h}" style="width:100%;"><polyline fill="none" stroke="#111110" stroke-width="2.4" points="${poly}" /><text x="${pad}" y="18" fill="#77736d" font-size="11" font-family="monospace">Peak: ₹${Math.max(...vals).toFixed(2)} (+${bt.inr_depreciation_pct}%)</text><text x="${pad}" y="${h-6}" fill="#77736d" font-size="11" font-family="monospace">${pts[0].date} (₹${vals[0].toFixed(2)}) → ${pts[pts.length-1].date} (₹${vals[vals.length-1].toFixed(2)})</text></svg>`;
       }
     }
 
@@ -467,5 +590,3 @@
     loadBacktest();
     loadLatestRun();
   </script>
-</body>
-</html>

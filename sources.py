@@ -227,6 +227,22 @@ def get_all_steps(run_id: str, db_path: Path = DB_FILE) -> List[Dict[str, Any]]:
         return [dict(r) for r in rows]
 
 
+def log_cost(run_id: str, endpoint: str, credits: float = 0.0, inr_cost: float = 0.0, db_path: Path = DB_FILE) -> None:
+    """Write one cost_ledger row. Every outbound call (success, failure or retry) and every cache hit gets one."""
+    with db_conn(db_path) as conn:
+        conn.execute(
+            "INSERT INTO cost_ledger (run_id, endpoint, credits, tokens, inr_cost, at) VALUES (?, ?, ?, 0, ?, ?)",
+            (run_id, endpoint, float(credits), float(inr_cost), utc_now()),
+        )
+
+
+def _credits_from_headers(resp: Any) -> float:
+    try:
+        return float(resp.headers.get("x-credits-used") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _req_hash(endpoint: str, body: Dict[str, Any]) -> str:
     raw = f"{endpoint}:{json.dumps(body, sort_keys=True)}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
@@ -340,6 +356,10 @@ def crust(
                 continue
             with httpx.Client(timeout=30.0) as client:
                 resp = client.post(url, headers=headers, json=body)
+            if resp.status_code >= 400:
+                # Failed calls are still calls: record them (credits as charged by Crustdata, usually 0).
+                fail_cr = _credits_from_headers(resp)
+                log_cost(run_id, f"{endpoint} (HTTP {resp.status_code})", fail_cr, round(fail_cr * usd_per_cr * 92.68, 2), db_path)
             if resp.status_code == 402:
                 ev_id = add_evidence(
                     run_id=run_id,
@@ -395,6 +415,7 @@ def crust(
                 "evidence_id": ev_id,
             }
         except httpx.HTTPError as exc:
+            log_cost(run_id, f"{endpoint} (network error: {type(exc).__name__})", 0.0, 0.0, db_path)
             if attempt == 3:
                 return {"ok": False, "status_code": 0, "error": str(exc)}
             time.sleep(backoff)
@@ -402,7 +423,7 @@ def crust(
     return {"ok": False, "status_code": 0, "error": "Max retries exhausted"}
 
 
-def _load_real_fx_history(db_path: Path = DB_FILE) -> Dict[str, float]:
+def _load_real_fx_history(db_path: Path = DB_FILE, run_id: str = "fx_history") -> Dict[str, float]:
     """Load real daily ECB/Frankfurter USD/INR history (cached/local snapshot)."""
     snap_path = BASE_DIR / "hedgedesk" / "usd_inr_ecb_history.json"
     if snap_path.exists():
@@ -413,12 +434,14 @@ def _load_real_fx_history(db_path: Path = DB_FILE) -> Dict[str, float]:
     try:
         with httpx.Client(timeout=20.0, follow_redirects=True) as client:
             r = client.get(url)
+            log_cost(run_id, "fx_history_download (frankfurter)", 0.0, 0.0, db_path)
             r.raise_for_status()
             raw = r.json()
             snap_path.parent.mkdir(exist_ok=True)
             snap_path.write_text(json.dumps(raw), encoding="utf-8")
             return {d: float(v["INR"]) for d, v in raw.get("rates", {}).items() if "INR" in v}
     except Exception:
+        log_cost(run_id, "fx_history_download (frankfurter, failed)", 0.0, 0.0, db_path)
         return {}
 
 
@@ -438,16 +461,16 @@ def fetch_fx(
     """
     cfg = load_policy_yaml()
     bounds = cfg["hard_rules"]["sanity_bounds"]
-    hist_map = _load_real_fx_history(db_path)
+    hist_map = _load_real_fx_history(db_path, run_id=run_id)
 
     # Case 18*: FBIL/RBI & fallback down -> cannot verify rate
     if simulate_down:
         ev_id = add_evidence(
-            run_id, "https://www.fbil.org.in/", "usd_inr_spot", "CANNOT_VERIFY (source timeout/down)", today_str(), db_path=db_path
+            run_id, "SIMULATED (UI test toggle: FX feed down)", "usd_inr_spot", "CANNOT_VERIFY (simulated source timeout/down)", today_str(), db_path=db_path
         )
         return {
             "status": "CANNOT_VERIFY",
-            "reason": "Both primary (FBIL/RBI) and secondary (ECB/Frankfurter) FX feeds failed/timed out.",
+            "reason": "FX feeds unavailable (simulated): live ECB/Frankfurter rate and stored fallback both failed/timed out.",
             "spot": None,
             "evidence_ids": [ev_id],
         }
@@ -457,7 +480,7 @@ def fetch_fx(
         bad_spot = -5.0
         bad_prem = 40.0
         ev_id = add_evidence(
-            run_id, "https://www.fbil.org.in/", "sanity_check", f"REJECTED spot={bad_spot}, prem={bad_prem}%", today_str(), db_path=db_path
+            run_id, "SIMULATED (UI test toggle: corrupted feed)", "sanity_check", f"REJECTED spot={bad_spot}, prem={bad_prem}%", today_str(), db_path=db_path
         )
         return {
             "status": "CANNOT_VERIFY",
@@ -470,7 +493,7 @@ def fetch_fx(
     if simulate_stale:
         stale_date = "2026-10-01"
         ev_id = add_evidence(
-            run_id, "https://www.fbil.org.in/", "reference_rate_date", f"STALE ({stale_date})", stale_date, db_path=db_path
+            run_id, "SIMULATED (UI test toggle: stale feed)", "reference_rate_date", f"STALE ({stale_date})", stale_date, db_path=db_path
         )
         return {
             "status": "STALE_HOLD",
@@ -500,6 +523,8 @@ def fetch_fx(
                 cached = json.loads(row["response_json"])
                 spot = float(cached["rates"]["INR"])
                 rec_date = cached["date"]
+        if spot is not None:
+            log_cost(run_id, "fx_official_reference (cache)", 0.0, 0.0, db_path)
 
         if spot is None:
             for attempt in range(2):
@@ -521,6 +546,7 @@ def fetch_fx(
                         )
                     break
                 except Exception:
+                    log_cost(run_id, "fx_official_reference (failed)", 0.0, 0.0, db_path)
                     time.sleep(0.5)
 
         if spot is None and hist_map:
@@ -544,8 +570,9 @@ def fetch_fx(
     log_rets = [math.log(vals[i] / vals[i - 1]) for i in range(1, len(vals)) if vals[i - 1] > 0]
     sigma_daily = statistics.stdev(log_rets) if len(log_rets) >= 2 else 0.0022
 
-    # 1M, 3M, 6M RBI/FBIL annualized forward premia (%)
-    # Dynamically reflects slightly higher carry during higher vol regimes while staying within FBIL 2025-2026 range
+    # 1M, 3M, 6M annualized forward premia (%) — MODELLED, not fetched. No live FBIL feed is integrated.
+    # Base values sit inside the 2025-2026 FBIL range, nudged up for higher realised vol. Labelled as
+    # modelled / cannot verify in the evidence ledger so no one reads them as an FBIL quote.
     vol_adj = max(0.0, (sigma_daily * math.sqrt(252) * 100.0 - 3.0) * 0.15)
     premia_pct = {
         "1m": round(2.15 + vol_adj, 3),
@@ -565,9 +592,9 @@ def fetch_fx(
         )
         ev2 = add_evidence(
             run_id,
-            "https://www.fbil.org.in/ (FBIL / RBI Forward Premia)",
-            "forward_premia_annualized",
-            f"1M={premia_pct['1m']}% | 3M={premia_pct['3m']}% | 6M={premia_pct['6m']}%",
+            "MODELLED in sources.fetch_fx (no live FBIL feed integrated)",
+            "forward_premia_annualized (modelled)",
+            f"1M={premia_pct['1m']}% | 3M={premia_pct['3m']}% | 6M={premia_pct['6m']}% — cannot verify against FBIL; indicative only, bank quote needed",
             rec_date,
             db_path=db_path,
         )
@@ -578,9 +605,9 @@ def fetch_fx(
             alt_spot = round(spot + 0.65, 4)
             ev3 = add_evidence(
                 run_id,
-                "https://open.er-api.com/v6/latest/USD",
+                "SIMULATED (UI test toggle: source disagreement)",
                 "rates.INR (Disagreement > 0.5%)",
-                f"Secondary={alt_spot} vs Primary FBIL/ECB={spot}; used freshest official reference {spot}",
+                f"Simulated secondary={alt_spot} vs primary ECB/Frankfurter={spot}; used official reference {spot}",
                 rec_date,
                 db_path=db_path,
             )

@@ -210,6 +210,35 @@ def decide(
             })
             continue
 
+        # Missing amount or supplier (e.g. a typed request that never stated them): hold, never guess.
+        missing_hold = None
+        if "MISSING_AMOUNT" in flags:
+            missing_hold = ("HOLD_MISSING_AMOUNT", "HOLD.MISSING_AMOUNT",
+                            "Cannot verify: no amount with a currency was given; held and requesting the invoice amount from finance team.")
+        elif "MISSING_SUPPLIER" in flags:
+            missing_hold = ("HOLD_MISSING_SUPPLIER", "HOLD.MISSING_SUPPLIER",
+                            "Cannot verify: no supplier named; held and requesting the payee from finance team.")
+        if missing_hold:
+            decisions.append({
+                "invoice_id": inv_id,
+                "bucket": inv.get("bucket", "MISSING_FIELDS"),
+                "action": missing_hold[0],
+                "ratio": 0.0,
+                "hedged_usd": 0.0,
+                "var_95_inr": 0.0,
+                "risk_pct": 0.0,
+                "cost_pct": 0.0,
+                "s_factor": 0.0,
+                "forward_rate": None,
+                "fwd_cost_inr": 0.0,
+                "roll_cost_inr": 0.0,
+                "risk_flag": "high",
+                "policy_clause": missing_hold[1],
+                "evidence_ids": ev_ids,
+                "reason": missing_hold[2],
+            })
+            continue
+
         if "MISSING_DUE_DATE" in flags or "INVALID_DUE_DATE" in flags:
             decisions.append({
                 "invoice_id": inv_id,
@@ -409,7 +438,7 @@ def decide(
             "reason": (
                 f"Range [{int(lo*100)}%, {int(hi*100)}%] ({clause}) | "
                 f"risk%={risk_pct*100:.2f}% vs cost%={cost_frac*100:.2f}% -> s={s_val:.2f} -> hedge {int(round(ratio*100))}% "
-                f"(${hedged_usd:,.2f} @ ₹{fwd_rate}). " + " ".join(note_extra)
+                f"(${hedged_usd:,.2f} @ ₹{fwd_rate}, indicative: modelled premium, bank quote needed). " + " ".join(note_extra)
             ).strip(),
         })
 

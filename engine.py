@@ -138,6 +138,15 @@ def run_pipeline(
             if dec["action"] not in {"HEDGE_FORWARD", "ROLL_EXISTING_FORWARD"}:
                 alternatives_map[inv_id] = {"status": "SKIPPED", "makers": [], "traders_excluded": []}
                 continue
+            if inv.get("quantity_missing"):
+                alternatives_map[inv_id] = {
+                    "status": "CANNOT_VERIFY_UNIT_PRICE",
+                    "part_description": inv.get("part_description"),
+                    "makers": [],
+                    "traders_excluded": [],
+                    "note": "Cannot verify: quantity not given, so per-unit landed cost and domestic break-even can't be computed. No domestic search run.",
+                }
+                continue
             unit_usd = inv["amount_usd"] / max(1, inv["quantity_units"])
             eff_fx = round(
                 dec["ratio"] * (dec["forward_rate"] or dec["spot_rate"])
@@ -193,7 +202,7 @@ def run_pipeline(
                     payload={
                         "title": (
                             f"{'Roll' if dec['action']=='ROLL_EXISTING_FORWARD' else 'Book'} "
-                            f"{int(round(dec['ratio']*100))}% Forward (${dec['hedged_usd']:,.2f} @ ₹{dec.get('forward_rate') or 'N/A'})"
+                            f"{int(round(dec['ratio']*100))}% Forward (${dec['hedged_usd']:,.2f} @ ₹{dec.get('forward_rate') or 'N/A'} indicative; bank quote needed)"
                         ),
                         "supplier": sup.get("legal_name") or inv["supplier_raw"],
                         "usd_amount": dec["hedged_usd"],

@@ -21,13 +21,13 @@ Automated execution across all 28 cases from Context Doc Pages 11–14. Total ch
 | Case 15 | Domestic candidate classified MAKER vs TRADER cleanly | PASS | `makers=5, traders_excluded=0` |
 | Case 16 | No domestic candidate handled without inventing makers | PASS | `No domestic candidate found; import decision stands; no invented alternatives.` |
 | Case 17 | Domestic price always 'cannot verify, RFQ drafted' + break-even | PASS | `BE <= INR 50703.37` |
-| Case 18* | Both FX feeds down -> CANNOT_VERIFY & no decision | PASS | `Both primary (FBIL/RBI) and secondary (ECB/Frankfurter) FX f` |
+| Case 18* | Both FX feeds down -> CANNOT_VERIFY & no decision | PASS | `FX feeds unavailable (simulated): live ECB/Frankfurter rate ` |
 | Case 19 | Stale FX data (>1 business day) -> STALE_HOLD naming date | PASS | `Market data from 2026-10-01 is older than policy limit (1 bu` |
 | Case 20 | Sanity bounds reject negative spot / 40% premium | PASS | `Sanity bounds rejected corrupted feed (spot=-5.0 outside [60.0, 1` |
 | Case 21 | Market holiday uses last published business day & states date | PASS | `record_date=2026-11-20, spot=92.68` |
-| Case 22 | Source disagreement flagged & freshest official used | PASS | `evidence_ids=[561, 562, 563]` |
+| Case 22 | Source disagreement flagged & freshest official used | PASS | `evidence_ids=[356, 357, 358]` |
 | Case 23* | Kill mid-run & restart resumes from SQLite `steps` without re-calling APIs | PASS | `logs=5` |
-| Case 24* | Crash after Razorpay call before outbox save reconciles existing receipt ID (no double-pay) | PASS | `ref=pay_rzptest_41f19b69df56` |
+| Case 24* | Crash after Razorpay call before outbox save reconciles existing receipt ID (no double-pay) | PASS | `ref=pay_rzptest_317c88c2f8f9` |
 | Case 25 | Crustdata 429 backoff & cache resilience | PASS | `Cache/backoff returned OK` |
 | Case 26 | Crustdata 402 credits-out stops new live calls & flags skipped checks | PASS | `HTTP 402: Crustdata credits exhausted; stopping live calls a` |
 | Case 27* | Due date moved -> rolls existing forward, records swap cost (never books 2nd) | PASS | `roll_cost=INR 20,936.35` |

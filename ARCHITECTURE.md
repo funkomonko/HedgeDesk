@@ -26,7 +26,7 @@ flowchart TD
     BT --> POL
 
     SRC <--> CRUST["Crustdata API v2025-11-01\nIdentify, Enrich, Search, Person Search"]
-    SRC <--> FX["Official FX Sources\nECB / Frankfurter + FBIL Premia"]
+    SRC <--> FX["FX source\nECB / Frankfurter spot\n(forward premia modelled, not fetched)"]
 
     SRC --> LEDGERS[("SQLite hedgedesk.db\ncache | evidence | cost_ledger | invoices | decisions | outbox | steps")]
 

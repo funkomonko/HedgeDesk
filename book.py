@@ -98,6 +98,8 @@ def load_invoices(source: Any) -> List[Dict[str, Any]]:
             "parse_confidence": parsed_amt["confidence"],
             "parse_note": parsed_amt["note"],
             "quantity_units": max(1, int(float(r.get("quantity_units") or 1))),
+            # Quantity not given: per-unit landed cost / break-even cannot be computed (engine skips it).
+            "quantity_missing": str(r.get("quantity_units") or "").strip() == "",
             "part_description": str(r.get("part_description") or "industrial components").strip(),
             "domestic_query": str(r.get("domestic_query") or r.get("part_description") or "industrial manufacturer").strip(),
             "due_date": str(r.get("due_date") or "").strip(),
@@ -131,7 +133,7 @@ def verify_bank_change_email(
             "op": "and",
             "conditions": [
                 {"field": "experience.employment_details.company_domains", "type": "in", "value": [supplier_domain or "unknown.invalid"]},
-                {"field": "basic_profile.name", "type": "contains", "value": sender_name.split("(")[0].strip()},
+                {"field": "basic_profile.name", "type": "(.)", "value": sender_name.split("(")[0].strip()},
             ],
         },
         "limit": 3,
@@ -139,11 +141,19 @@ def verify_bank_change_email(
     res = crust("/person/search", search_body, run_id=run_id)
     profiles = ((res.get("data") or {}).get("profiles") or []) if res.get("ok") else []
 
+    if res.get("ok"):
+        search_note = f"Crustdata Person Search found {len(profiles)} match(es) at {supplier_domain or 'unknown'}"
+        ev_value = f"Bank-change sender '{sender_name}' ({sender_email}): matched_profiles={len(profiles)}, domain_match={domain_match}"
+    else:
+        # The search itself failed: say so instead of reporting "0 matches" from a call that returned nothing.
+        err = res.get("error") or res.get("status_code") or "unknown error"
+        search_note = f"Crustdata Person Search could not run (cannot verify sender: {str(err)[:60]})"
+        ev_value = f"CANNOT_VERIFY sender '{sender_name}' ({sender_email}): Person Search failed ({str(err)[:60]}), domain_match={domain_match}"
     ev_id = add_evidence(
         run_id=run_id,
         source="https://api.crustdata.com/person/search",
         field_path="profiles[].basic_profile",
-        value=f"Bank-change sender '{sender_name}' ({sender_email}): matched_profiles={len(profiles)}, domain_match={domain_match}",
+        value=ev_value,
         record_date=today_str(),
     )
     return {
@@ -151,11 +161,11 @@ def verify_bank_change_email(
         "sender_name": sender_name,
         "sender_email": sender_email,
         "domain_match": domain_match,
-        "crustdata_profiles_found": len(profiles),
+        "crustdata_profiles_found": len(profiles) if res.get("ok") else None,
         "verdict": "HOLD_BANK_CHANGE_FRAUD_CHECK",
         "reason": (
             f"Bank-detail change requested by '{sender_name}' ({sender_email}). "
-            f"Crustdata Person Search found {len(profiles)} match(es) at {supplier_domain or 'unknown'}, domain_match={domain_match}. "
+            f"{search_note}, domain_match={domain_match}. "
             f"Payment HELD for human voice-callback verification; never auto-paid to new account."
         ),
         "evidence_id": ev_id,
@@ -181,6 +191,19 @@ def resolve_supplier(
     min_conf = float(cfg["min_identify_confidence"])
     hc_drop_thresh = float(cfg["headcount_drop_high_risk_pct"])
     new_year_thresh = int(cfg["new_company_year_threshold"])
+
+    if not str(supplier_raw or "").strip() and not str(supplier_domain or "").strip():
+        # Nothing to look up: don't spend a Crustdata call on an empty name.
+        ev_id = add_evidence(run_id, "invoice input", "supplier_raw / supplier_domain", "No supplier name or domain given", today_str())
+        return {
+            "status": "CANNOT_VERIFY",
+            "supplier_id": None,
+            "legal_name": "",
+            "primary_domain": "",
+            "risk_flag": "high",
+            "reason": "No supplier named in the request; cannot verify who is being paid.",
+            "evidence_ids": [ev_id],
+        }
 
     ident_body: Dict[str, Any] = {"count": 3}
     if supplier_domain:
@@ -448,6 +471,10 @@ def build_book(
             except Exception:
                 flags.append("INVALID_DUE_DATE")
 
+        if not str(inv.get("supplier_raw") or "").strip() and not str(inv.get("supplier_domain") or "").strip():
+            flags.append("MISSING_SUPPLIER")
+        if float(inv.get("amount_usd") or 0.0) <= 0:
+            flags.append("MISSING_AMOUNT")
         if bank_chk.get("has_bank_change"):
             flags.append("BANK_CHANGE_FRAUD_HOLD")
         if inv.get("parse_confidence", 1.0) < 0.95:
@@ -478,6 +505,8 @@ def build_book(
                 status = inv["supplier"]["status"]
             elif "MISSING_DUE_DATE" in inv["flags"]:
                 status = "HOLD_MISSING_DATE"
+            elif "MISSING_AMOUNT" in inv["flags"]:
+                status = "HOLD_MISSING_AMOUNT"
 
             inv["book_status"] = status
             conn.execute(
