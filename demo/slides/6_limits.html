@@ -1,0 +1,31 @@
+<!doctype html><html><head><meta charset="utf-8"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"><style>
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{font-family:Inter,-apple-system,Segoe UI,sans-serif;background:#f5f5f3;color:#111110;display:flex;flex-direction:column;padding:64px 88px;-webkit-font-smoothing:antialiased}
+.top{display:flex;align-items:center;gap:14px;margin-bottom:36px}.top img{height:46px;mix-blend-mode:multiply}
+.top span{font-weight:700;font-size:20px;letter-spacing:-.01em}.top em{font-style:normal;color:#77736d;font-size:14px;margin-left:auto;font-family:'JetBrains Mono',monospace}
+h1{font-size:46px;letter-spacing:-.03em;margin:0 0 14px;line-height:1.1}h2{font-size:34px;letter-spacing:-.025em;margin:0 0 26px}
+p.lead{font-size:21px;color:#3f3d3a;max-width:1000px;line-height:1.5;margin:0}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.grid{display:grid;gap:14px}.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}
+.card{background:#fff;border:1px solid #e7e5e2;border-radius:14px;padding:18px 20px}
+.card h3{margin:0 0 6px;font-size:16px}.card p{margin:0;color:#3f3d3a;font-size:14.5px;line-height:1.5}
+.k{font-size:30px;font-weight:600;font-family:'JetBrains Mono',monospace;letter-spacing:-.03em}
+.lbl{font-size:13px;color:#77736d;margin-bottom:6px}
+.flow{display:flex;align-items:stretch;gap:10px;margin-bottom:16px}
+.node{flex:1;background:#fff;border:1.5px solid #111110;border-radius:12px;padding:12px 14px}
+.node b{display:block;font-size:14px}.node small{display:block;color:#77736d;font-size:12px;margin-top:4px;font-family:'JetBrains Mono',monospace}
+.arrow{align-self:center;font-size:22px;color:#77736d}
+.band{background:#111110;color:#fff;border-radius:12px;padding:14px 18px;font-size:14px;margin-bottom:14px}
+.band b{font-weight:600}.muted{color:#77736d}
+table{border-collapse:collapse;width:100%;background:#fff;border:1px solid #e7e5e2;border-radius:12px;overflow:hidden;font-size:14px}
+td,th{padding:11px 14px;border-bottom:1px solid #e7e5e2;text-align:left;vertical-align:top}th{font-size:12px;color:#77736d;background:#fafaf9}
+td:first-child{font-weight:600;width:26%}tr:last-child td{border:none}
+.tag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid #fbdba7;background:#fff7e8;color:#b45309;font-family:'JetBrains Mono',monospace}
+</style></head><body><div class="top"><img src="../logo-mark.jpg"><span>HedgeDesk</span><em>6 / 6</em></div>
+<h2>What isn't live yet</h2>
+<div class="grid g2">
+ <div class="card"><h3>Forward premia are modelled <span class="tag">cannot verify</span></h3><p>1M/3M/6M premia come from the 2025–26 FBIL range plus a volatility adjustment. The evidence ledger says so, and forward rates are marked indicative until the bank quotes.</p></div>
+ <div class="card"><h3>Payments use a local stand-in</h3><p>It behaves like Razorpay test mode, storing each payment against a receipt ID, but it doesn't call Razorpay's API yet. Bank requests and RFQs are drafted, not sent.</p></div>
+ <div class="card"><h3>Staleness gate</h3><p>The one-business-day freshness hold is in the policy and the tests but isn't enforced on the live fallback path yet.</p></div>
+ <div class="card"><h3>Backtest scope</h3><p>Real daily USD/INR, 30 Apr 2025 to 20 Nov 2026, but synthetic $100k payables and an assumed 18 bps spread. Hedging 100% did better on risk in a one-way market.</p></div>
+</div></body></html>

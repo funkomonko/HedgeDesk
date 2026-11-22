@@ -1,0 +1,39 @@
+<!doctype html><html><head><meta charset="utf-8"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"><style>
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{font-family:Inter,-apple-system,Segoe UI,sans-serif;background:#f5f5f3;color:#111110;display:flex;flex-direction:column;padding:64px 88px;-webkit-font-smoothing:antialiased}
+.top{display:flex;align-items:center;gap:14px;margin-bottom:36px}.top img{height:46px;mix-blend-mode:multiply}
+.top span{font-weight:700;font-size:20px;letter-spacing:-.01em}.top em{font-style:normal;color:#77736d;font-size:14px;margin-left:auto;font-family:'JetBrains Mono',monospace}
+h1{font-size:46px;letter-spacing:-.03em;margin:0 0 14px;line-height:1.1}h2{font-size:34px;letter-spacing:-.025em;margin:0 0 26px}
+p.lead{font-size:21px;color:#3f3d3a;max-width:1000px;line-height:1.5;margin:0}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.grid{display:grid;gap:14px}.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}
+.card{background:#fff;border:1px solid #e7e5e2;border-radius:14px;padding:18px 20px}
+.card h3{margin:0 0 6px;font-size:16px}.card p{margin:0;color:#3f3d3a;font-size:14.5px;line-height:1.5}
+.k{font-size:30px;font-weight:600;font-family:'JetBrains Mono',monospace;letter-spacing:-.03em}
+.lbl{font-size:13px;color:#77736d;margin-bottom:6px}
+.flow{display:flex;align-items:stretch;gap:10px;margin-bottom:16px}
+.node{flex:1;background:#fff;border:1.5px solid #111110;border-radius:12px;padding:12px 14px}
+.node b{display:block;font-size:14px}.node small{display:block;color:#77736d;font-size:12px;margin-top:4px;font-family:'JetBrains Mono',monospace}
+.arrow{align-self:center;font-size:22px;color:#77736d}
+.band{background:#111110;color:#fff;border-radius:12px;padding:14px 18px;font-size:14px;margin-bottom:14px}
+.band b{font-weight:600}.muted{color:#77736d}
+table{border-collapse:collapse;width:100%;background:#fff;border:1px solid #e7e5e2;border-radius:12px;overflow:hidden;font-size:14px}
+td,th{padding:11px 14px;border-bottom:1px solid #e7e5e2;text-align:left;vertical-align:top}th{font-size:12px;color:#77736d;background:#fafaf9}
+td:first-child{font-weight:600;width:26%}tr:last-child td{border:none}
+.tag{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;border:1px solid #fbdba7;background:#fff7e8;color:#b45309;font-family:'JetBrains Mono',monospace}
+</style></head><body><div class="top"><img src="../logo-mark.jpg"><span>HedgeDesk</span><em>3 / 6</em></div>
+<h2>Architecture</h2>
+<div class="flow">
+ <div class="node"><b>Invoices</b><small>CSV · typed request</small></div><div class="arrow">→</div>
+ <div class="node"><b>1 · Book</b><small>book.py</small><small>parse, KYB, dedupe</small></div><div class="arrow">→</div>
+ <div class="node"><b>2 · Market</b><small>sources.fetch_fx</small><small>spot, 60d vol, bounds</small></div><div class="arrow">→</div>
+ <div class="node"><b>3 · Policy</b><small>policy.py · no I/O</small><small>VaR, cost, ratio</small></div><div class="arrow">→</div>
+ <div class="node"><b>4 · Alternatives</b><small>alternatives.py</small><small>makers, break-even</small></div><div class="arrow">→</div>
+ <div class="node"><b>5 · Outbox</b><small>actions.py</small><small>forward, payment, RFQ</small></div>
+</div>
+<div class="band"><b>Checkpoint after every step.</b> Each step writes its output to the SQLite <span class="mono">steps</span> table before the next one starts. A restart with the same input skips finished steps.</div>
+<div class="grid g3">
+ <div class="card"><h3>sources.py: the only door out</h3><p>Crustdata (identify, enrich, person search, company search) and ECB rates via Frankfurter. Response cache keyed by request hash, budget check before each paid call, backoff on 429/5xx, hard stop on 402.</p></div>
+ <div class="card"><h3>Ledgers</h3><p><span class="mono">evidence</span>: source, field, value, record date for every fact.<br><span class="mono">cost_ledger</span>: one row per call, including failures and cache hits.</p></div>
+ <div class="card"><h3>Approval</h3><p>Nothing in the outbox runs until a person clicks Approve. Above ₹1 Cr it needs a second approver. Execute checks the stored state and the payment receipt before paying.</p></div>
+</div></body></html>

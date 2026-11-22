@@ -9,3 +9,4 @@ __pycache__/
 .venv/
 *.db-shm
 *.db-wal
+demo/out/
