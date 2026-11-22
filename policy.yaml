@@ -1,0 +1,52 @@
+policy_version: "FEMA-CORP-TREASURY-2026.2"
+client_name: "BharatPrecision Components & 3PL Imports Pvt. Ltd."
+currency_scope: "USD"
+instrument_scope: "FX_FORWARD_ONLY"
+
+tenor_ranges:
+  0_to_1_month:
+    min_days: 0
+    max_days: 30
+    confirmed: [0.75, 1.00]
+    forecast: [0.50, 0.75]
+  1_to_3_months:
+    min_days: 31
+    max_days: 90
+    confirmed: [0.50, 0.75]
+    forecast: [0.25, 0.50]
+  3_to_6_months:
+    min_days: 91
+    max_days: 180
+    confirmed: [0.25, 0.50]
+    forecast: [0.00, 0.25]
+
+decision_rule:
+  k: 3.0
+  vol_window_trading_days: 60
+
+hard_rules:
+  max_total_hedge_ratio: 1.00
+  dual_approval_threshold_inr: 10000000
+  max_market_data_age_business_days: 1
+  max_tenor_days: 180
+  sanity_bounds:
+    min_spot_usd_inr: 60.0
+    max_spot_usd_inr: 130.0
+    min_annual_fwd_prem_pct: -2.0
+    max_annual_fwd_prem_pct: 15.0
+
+supplier_risk_rules:
+  min_identify_confidence: 0.82
+  min_verified_headcount: 15
+  headcount_drop_high_risk_pct: -5.0
+  new_company_year_threshold: 2024
+
+cost_and_landed_assumptions:
+  bank_spread_bps: 18.0
+  default_duty_pct: 7.5
+  default_freight_pct: 3.2
+  domestic_gst_working_cap_adv_pct: 1.5
+  usd_per_crustdata_credit: 0.05
+  run_cost_limit_credits: 25.0
+  monthly_subscription_inr: 24999.0
+  manual_advisor_fee_inr: 45000.0

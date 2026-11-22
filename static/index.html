@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HedgeDesk — AI Treasury Analyst & Domestic Sourcing Desk</title>
+  <style>
+    :root {
+      --bg: #0b0f17; --panel: #121826; --panel2: #182032; --border: #253047;
+      --text: #e6edf7; --muted: #93a3bc; --accent: #3b82f6; --accent-soft: rgba(59,130,246,0.14);
+      --green: #10b981; --green-soft: rgba(16,185,129,0.14);
+      --amber: #f59e0b; --amber-soft: rgba(245,158,11,0.14);
+      --red: #ef4444; --red-soft: rgba(239,68,68,0.14);
+      --purple: #a855f7; --purple-soft: rgba(168,85,247,0.14);
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: var(--sans); background: var(--bg); color: var(--text); line-height: 1.45; }
+    .topbar {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 14px 24px; background: #0e1420; border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 20; flex-wrap: wrap; gap: 10px;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .logo { width: 34px; height: 34px; border-radius: 8px; background: linear-gradient(135deg, #2563eb, #10b981); display: grid; place-items: center; font-weight: 800; }
+    .brand h1 { margin: 0; font-size: 18px; }
+    .sub { font-size: 12px; color: var(--muted); }
+    .top-badges { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .pill {
+      padding: 4px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+      border: 1px solid var(--border); background: var(--panel); font-family: var(--mono);
+    }
+    .pill.green { border-color: rgba(16,185,129,0.45); color: #34d399; background: var(--green-soft); }
+    .pill.blue { border-color: rgba(59,130,246,0.45); color: #60a5fa; background: var(--accent-soft); }
+    .pill.amber { border-color: rgba(245,158,11,0.45); color: #fbbf24; background: var(--amber-soft); }
+    .pill.red { border-color: rgba(239,68,68,0.45); color: #f87171; background: var(--red-soft); }
+    .pill.purple { border-color: rgba(168,85,247,0.45); color: #c084fc; background: var(--purple-soft); }
+
+    .container { max-width: 1420px; margin: 0 auto; padding: 18px 24px 60px; }
+    .control-deck { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+    button {
+      background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+      padding: 8px 12px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 12.5px;
+    }
+    button:hover { border-color: var(--accent); background: #1e293b; }
+    button.primary { background: #2563eb; border-color: #3b82f6; color: #fff; }
+    button.success { background: rgba(16,185,129,0.18); border-color: rgba(16,185,129,0.5); color: #6ee7b7; }
+    .toggle-row { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); padding-top: 8px; border-top: 1px solid var(--border); align-items: center; }
+    .toggle-row label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+    .custom-box { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .custom-box input[type="text"] { flex: 1; min-width: 280px; background: #0c121e; border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 13px 15px; }
+    .kpi .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .kpi .val { font-size: 20px; font-weight: 700; margin: 4px 0; font-family: var(--mono); }
+    .kpi .hint { font-size: 11.5px; color: var(--muted); }
+
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 14px; flex-wrap: wrap; }
+    .tab-btn { background: transparent; border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 9px 14px; color: var(--muted); font-weight: 600; }
+    .tab-btn.active { color: #fff; border-bottom-color: var(--accent); background: rgba(59,130,246,0.08); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    .card h2 { margin: 0 0 10px; font-size: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    th, td { text-align: left; padding: 9px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { color: var(--muted); font-size: 11px; text-transform: uppercase; background: #0e1420; }
+    .mono { font-family: var(--mono); }
+    .small { font-size: 11.5px; color: var(--muted); }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 980px) { .grid-2 { grid-template-columns: 1fr; } }
+    pre.rfq { background: #0a0f1a; border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-family: var(--mono); font-size: 11.5px; white-space: pre-wrap; color: #cbd5e1; }
+    .policy-drawer { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); gap: 10px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+    .policy-drawer.open { display: grid; }
+    .policy-drawer label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+    .policy-drawer input { width: 100%; background: #0c121e; border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px; font-family: var(--mono); }
+    .ev-link { cursor: pointer; text-decoration: underline; color: #60a5fa; font-family: var(--mono); font-size: 11px; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">HD</div>
+      <div>
+        <h1>HedgeDesk <span class="small" style="font-weight:400;">— AI Treasury Analyst &amp; Domestic Sourcing Desk</span></h1>
+        <div class="sub">Buyer: <strong id="clientName">BharatPrecision Components &amp; 3PL Imports Pvt. Ltd.</strong> · Policy: <span id="policyVer" class="mono">FEMA-CORP-TREASURY-2026.2</span></div>
+      </div>
+    </div>
+    <div class="top-badges">
+      <span class="pill green" id="spotBadge">USD/INR: Loading...</span>
+      <span class="pill blue" id="creditsBadge">Crustdata: ...</span>
+      <span class="pill amber" id="jobCostBadge">Job Cost: ₹0.00</span>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="control-deck">
+      <div class="btn-row">
+        <button class="primary" onclick="runDemo('bearings_demo')">Run Demo Story</button>
+        <button onclick="document.getElementById('csvInput').click()">Upload Invoices CSV</button>
+        <input type="file" id="csvInput" accept=".csv" style="display:none;" onchange="uploadCsv(this)" />
+        <button onclick="document.getElementById('policyDrawer').classList.toggle('open')">Edit Hedge Parameters</button>
+        <span id="loadingTxt" class="mono small" style="display:none;color:#60a5fa;">Running Crustdata + RBI/ECB pipeline...</span>
+      </div>
+
+      <div class="toggle-row">
+        <label><input type="checkbox" id="chkDown" /> Case 18*: FX Feeds Down (<code>cannot verify</code>)</label>
+        <label><input type="checkbox" id="chkStale" /> Case 19: Stale Rate (&gt;1 biz day hold)</label>
+        <label><input type="checkbox" id="chkNonsense" /> Case 20: Corrupted 40% Feed (sanity reject)</label>
+        <label><input type="checkbox" id="chkDisagree" /> Case 22: Sources Disagree Flag</label>
+        <label><input type="checkbox" id="chk402" /> Case 26: Simulate 402 Credits Out</label>
+        <label>Cost Limit: <input type="number" id="costLimit" value="25" min="0.1" step="0.5" style="width:60px;background:#0c121e;color:#fff;border:1px solid var(--border);border-radius:4px;padding:2px 5px;font-family:var(--mono);" /> cr</label>
+      </div>
+
+      <div class="custom-box">
+        <input type="text" id="plainAsk" placeholder="Plain-English request" />
+        <button onclick="runPlainAsk()">Run Unseen Request</button>
+      </div>
+
+      <div id="policyDrawer" class="policy-drawer">
+        <div><label>Decision Slope k</label><input type="number" step="0.5" id="polK" value="3.0" /></div>
+        <div><label>Bank Spread (bps)</label><input type="number" step="1" id="polSpread" value="18" /></div>
+        <div><label>Customs Duty (%)</label><input type="number" step="0.5" id="polDuty" value="7.5" /></div>
+        <div><label>Dual Approval &gt; (₹)</label><input type="number" step="1000000" id="polDual" value="10000000" /></div>
+        <div><label>Run Budget (credits)</label><input type="number" step="1" id="polBudget" value="25" /></div>
+        <div style="display:flex;align-items:flex-end;"><button class="success" style="width:100%;" onclick="savePolicy()">Save Parameters</button></div>
+      </div>
+    </section>
+
+    <section class="kpi-grid">
+      <div class="kpi"><div class="label">Total Hedged Exposure</div><div class="val" id="kHedged">$0</div><div class="hint" id="kCount">0 invoices processed</div></div>
+      <div class="kpi"><div class="label">95% FX VaR Exposure</div><div class="val" style="color:#34d399;" id="kVar">₹0</div><div class="hint" id="kFwdCost">Fwd carry cost: ₹0</div></div>
+      <div class="kpi"><div class="label">Holds &amp; Fraud Catches</div><div class="val" style="color:#fbbf24;" id="kHolds">0</div><div class="hint">Duplicates / Lookalikes / Bank Fraud</div></div>
+      <div class="kpi"><div class="label">Measured Job Cost</div><div class="val" style="color:#c084fc;" id="kCost">₹0.00</div><div class="hint" id="kCredits">0.00 Crustdata credits</div></div>
+      <div class="kpi"><div class="label">Finance Feasibility</div><div class="val" style="color:#60a5fa;" id="kSub">₹24,999/mo</div><div class="hint" id="kMargin">vs ₹45,000 manual advisor</div></div>
+    </section>
+
+    <nav class="tabs">
+      <button class="tab-btn active" onclick="switchTab('tBook', this)">1. Exposure Book</button>
+      <button class="tab-btn" onclick="switchTab('tDec', this)">2. Hedge Decisions</button>
+      <button class="tab-btn" onclick="switchTab('tAlt', this)">3. Domestic Alternatives</button>
+      <button class="tab-btn" onclick="switchTab('tOut', this)">4. Approvals &amp; Outbox</button>
+      <button class="tab-btn" onclick="switchTab('tBack', this)">5. 18M RBI/ECB Backtest</button>
+      <button class="tab-btn" onclick="switchTab('tEv', this)">6. Evidence &amp; Cost Ledger</button>
+    </nav>
+
+    <section id="tBook" class="tab-panel active">
+      <div class="card">
+        <h2><span>Exposure Book</span><span class="mono small" id="runLabel"></span></h2>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead><tr><th>Invoice / Type</th><th>Supplier &amp; Crustdata KYB</th><th>Amount / Due</th><th>Flags &amp; Bank Fraud Check</th><th>Book Status</th></tr></thead>
+            <tbody id="tbBook"><tr><td colspan="5" class="small">Click "Run Demo Story" above to start.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card"><h2>Execution Step Checkpoints</h2><ul id="stepLogs" class="small"></ul></div>
+    </section>
+
+    <section id="tDec" class="tab-panel">
+      <div class="card">
+        <h2><span>Deterministic Policy Decisions</span></h2>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead><tr><th>Invoice / Bucket</th><th>Action &amp; Clause</th><th>Range &amp; Hedge %</th><th>Risk% vs Cost% / VaR</th><th>Forward Rate &amp; Cost</th><th>Reason &amp; Clickable Evidence</th></tr></thead>
+            <tbody id="tbDec"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="tAlt" class="tab-panel">
+      <div id="altContainer"><div class="card small">Run a book to see verified Indian Makers vs Excluded Traders and Break-Even ₹ Unit Thresholds.</div></div>
+    </section>
+
+    <section id="tOut" class="tab-panel">
+      <div class="card">
+        <h2>
+          <span>Idempotent Approval Queue &amp; Outbox (Razorpay Test Mode)</span>
+          <span class="small">Maker-Checker Approver 2: <input type="text" id="secondApprover" placeholder="e.g. MD / Director (for > ₹1 Cr)" style="background:#0c121e;color:#fff;border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-size:12px;" /></span>
+        </h2>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead><tr><th>Kind</th><th>Instruction &amp; Invoice</th><th>Notional</th><th>State</th><th>Idempotency Key &amp; External Ref</th><th>Action</th></tr></thead>
+            <tbody id="tbOut"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="tBack" class="tab-panel">
+      <div class="card">
+        <h2><span>18-Month Point-in-Time Historical Backtest</span><button onclick="loadBacktest()">Recompute Backtest</button></h2>
+        <div id="btHeadline" style="padding:10px 14px;background:var(--accent-soft);border:1px solid rgba(59,130,246,0.35);border-radius:8px;margin-bottom:12px;font-size:13.5px;"></div>
+        <div class="grid-2">
+          <div id="btChart" style="background:#0c121e;border:1px solid var(--border);border-radius:8px;padding:10px;"></div>
+          <table>
+            <thead><tr><th>Strategy</th><th>Mean Rate</th><th>Worst Month</th><th>95% CVaR</th><th>Avg Cost (p/$)</th><th>Cut vs Never</th></tr></thead>
+            <tbody id="tbBt"></tbody>
+          </table>
+        </div>
+        <ul id="btLimits" class="small" style="margin-top:10px;"></ul>
+      </div>
+    </section>
+
+    <section id="tEv" class="tab-panel">
+      <div class="grid-2">
+        <div class="card">
+          <h2>Source Evidence Ledger</h2>
+          <div style="max-height:520px;overflow-y:auto;">
+            <table><thead><tr><th>ID</th><th>Source &amp; Field</th><th>Value &amp; Date</th></tr></thead><tbody id="tbEv"></tbody></table>
+          </div>
+        </div>
+        <div class="card">
+          <h2>API Cost Ledger</h2>
+          <div style="max-height:520px;overflow-y:auto;">
+            <table><thead><tr><th>Endpoint</th><th>Credits</th><th>INR Cost</th><th>Timestamp</th></tr></thead><tbody id="tbCost"></tbody></table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let currentRunId = null;
+    let currentEvMap = {};
+
+    function pill(txt, color="blue") { return `<span class="pill ${color}">${txt}</span>`; }
+    function switchTab(id, btn) {
+      document.querySelectorAll(".tab-panel").forEach(x => x.classList.remove("active"));
+      document.querySelectorAll(".tab-btn").forEach(x => x.classList.remove("active"));
+      document.getElementById(id).classList.add("active");
+      if (btn) btn.classList.add("active");
+    }
+
+    async function loadHealth() {
+      const r = await fetch("/api/health");
+      const d = await r.json();
+      if (d.crustdata_credits != null) document.getElementById("creditsBadge").textContent = `Crustdata: ${Number(d.crustdata_credits).toLocaleString()} cr`;
+      const p = d.policy || {};
+      document.getElementById("polK").value = p.decision_rule?.k ?? 3.0;
+      document.getElementById("polSpread").value = p.cost_and_landed_assumptions?.bank_spread_bps ?? 18;
+      document.getElementById("polDuty").value = p.cost_and_landed_assumptions?.default_duty_pct ?? 7.5;
+      document.getElementById("polDual").value = p.hard_rules?.dual_approval_threshold_inr ?? 10000000;
+      document.getElementById("polBudget").value = p.cost_and_landed_assumptions?.run_cost_limit_credits ?? 25;
+    }
+
+    async function loadLatestRun() {
+      try {
+        const r = await fetch("/api/latest-run");
+        const d = await r.json();
+        if (d.has_run) {
+          currentRunId = d.run_id;
+          renderResult(d);
+        }
+      } catch (e) {}
+    }
+
+    async function savePolicy() {
+      await fetch("/api/policy", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          k: parseFloat(document.getElementById("polK").value),
+          bank_spread_bps: parseFloat(document.getElementById("polSpread").value),
+          default_duty_pct: parseFloat(document.getElementById("polDuty").value),
+          dual_approval_threshold_inr: parseFloat(document.getElementById("polDual").value),
+          run_cost_limit_credits: parseFloat(document.getElementById("polBudget").value),
+        })
+      });
+      alert("policy.yaml updated live!");
+    }
+
+    async function runDemo(mode, rawText=null) {
+      document.getElementById("loadingTxt").style.display = "inline";
+      try {
+        const res = await fetch("/api/run", {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            mode, raw_text: rawText,
+            simulate_fx_down: document.getElementById("chkDown").checked,
+            simulate_fx_stale: document.getElementById("chkStale").checked,
+            simulate_fx_nonsense: document.getElementById("chkNonsense").checked,
+            simulate_fx_disagreement: document.getElementById("chkDisagree").checked,
+            simulate_402: document.getElementById("chk402").checked,
+            cost_limit_credits: parseFloat(document.getElementById("costLimit").value || "25"),
+          })
+        });
+        const d = await res.json();
+        currentRunId = d.run_id;
+        renderResult(d);
+        loadHealth();
+      } finally {
+        document.getElementById("loadingTxt").style.display = "none";
+      }
+    }
+
+    async function uploadCsv(inp) {
+      if (!inp.files.length) return;
+      const fd = new FormData();
+      fd.append("file", inp.files[0]);
+      document.getElementById("loadingTxt").style.display = "inline";
+      try {
+        const r = await fetch("/api/upload-csv", { method: "POST", body: fd });
+        const d = await r.json();
+        currentRunId = d.run_id;
+        renderResult(d);
+      } finally {
+        document.getElementById("loadingTxt").style.display = "none";
+      }
+    }
+
+    function runPlainAsk() {
+      const txt = document.getElementById("plainAsk").value.trim();
+      if (!txt) return alert("Type an invoice or request first.");
+      runDemo("parse_text", txt);
+    }
+
+    function inspectEv(id) {
+      const ev = currentEvMap[id];
+      if (!ev) return;
+      alert(`Evidence #${ev.id}\nSource: ${ev.source}\nField: ${ev.field_path}\nValue: ${ev.value}\nRecord Date: ${ev.record_date}\nRetrieved: ${ev.retrieved_at}`);
+    }
+
+    function renderResult(d) {
+      document.getElementById("runLabel").textContent = `run_id=${d.run_id}`;
+      const m = d.market || {};
+      const sb = document.getElementById("spotBadge");
+      if (m.status === "VERIFIED") {
+        sb.className = "pill green";
+        sb.textContent = `USD/INR: ₹${m.spot} (${m.record_date}) · 60d Vol ${m.ann_vol_pct}%`;
+      } else {
+        sb.className = "pill red";
+        sb.textContent = `FX Market: ${m.status}`;
+      }
+
+      const s = d.summary || {};
+      const holds = (d.decisions || []).filter(x => !["HEDGE_FORWARD","ROLL_EXISTING_FORWARD"].includes(x.action)).length;
+      document.getElementById("kHedged").textContent = `$${Number(s.total_hedged_usd||0).toLocaleString()}`;
+      document.getElementById("kCount").textContent = `${s.total_invoices||0} invoices processed`;
+      document.getElementById("kVar").textContent = `₹${Number(s.total_var_95_inr||0).toLocaleString("en-IN")}`;
+      document.getElementById("kFwdCost").textContent = `Fwd carry: ₹${Number(s.total_fwd_cost_inr||0).toLocaleString("en-IN")}`;
+      document.getElementById("kHolds").textContent = holds;
+      document.getElementById("kCost").textContent = `₹${Number(s.measured_job_cost_inr||0).toFixed(2)}`;
+      document.getElementById("kCredits").textContent = `${s.measured_credits||0} Crustdata credits`;
+      document.getElementById("kMargin").textContent = `vs ₹45k advisor (${s.gross_margin_pct||99}% GM)`;
+      document.getElementById("jobCostBadge").textContent = `Job Cost: ₹${Number(s.measured_job_cost_inr||0).toFixed(2)}`;
+
+      currentEvMap = Object.fromEntries((d.evidence || []).map(e => [e.id, e]));
+
+      document.getElementById("tbBook").innerHTML = (d.book?.invoices || []).map(inv => {
+        const sup = inv.supplier || {};
+        const bc = inv.bank_change_check || {};
+        const col = inv.book_status === "ACTIVE" ? "green" : (inv.book_status.includes("DUP") ? "amber" : "red");
+        return `<tr>
+          <td><strong class="mono">${inv.invoice_id}</strong><br/>${pill(inv.doc_type, inv.doc_type==='confirmed'?'blue':'purple')}<br/><span class="small">${inv.part_description}</span></td>
+          <td><strong>${sup.legal_name || inv.supplier_raw}</strong><br/><span class="small mono">ID: ${sup.supplier_id||'none'} · ${sup.primary_domain||'no domain'}</span><br/>${pill('risk='+sup.risk_flag, sup.risk_flag==='high'?'red':'green')} <span class="small">${sup.headcount?sup.headcount.toLocaleString()+' emp':''}</span></td>
+          <td class="mono"><strong>${inv.currency} ${Number(inv.amount_usd).toLocaleString()}</strong><br/><span class="small">Due: ${inv.due_date||'MISSING'} (${inv.tenor_days ?? '?'}d)</span>${inv.parse_note?`<br/><span class="small">${inv.parse_note}</span>`:''}</td>
+          <td>${(inv.flags||[]).map(f=>pill(f,'amber')).join(' ')}${bc.has_bank_change?`<br/><span class="small" style="color:#f87171;">${bc.reason}</span>`:''}${inv.dup_of?`<br/><span class="small">dup_of=${inv.dup_of}</span>`:''}</td>
+          <td>${pill(inv.book_status, col)}</td>
+        </tr>`;
+      }).join("");
+      document.getElementById("stepLogs").innerHTML = (d.step_logs || []).map(l => `<li>${l}</li>`).join("");
+
+      document.getElementById("tbDec").innerHTML = (d.decisions || []).map(dec => {
+        const c = ["HEDGE_FORWARD","ROLL_EXISTING_FORWARD"].includes(dec.action) ? "green" : (dec.action.includes("DUPLICATE")?"amber":"red");
+        const evLinks = (dec.evidence_ids||[]).map(id => `<span class="ev-link" onclick="inspectEv(${id})">[ev#${id}]</span>`).join(" ");
+        return `<tr>
+          <td><strong class="mono">${dec.invoice_id}</strong><br/><span class="small mono">${dec.bucket}</span></td>
+          <td>${pill(dec.action, c)}<br/><span class="small mono">${dec.policy_clause}</span></td>
+          <td class="mono">${dec.range_lo!=null?`[${Math.round(dec.range_lo*100)}%,${Math.round(dec.range_hi*100)}%]`:'-'}<br/><strong>${Math.round((dec.ratio||0)*100)}%</strong> ($${Number(dec.hedged_usd||0).toLocaleString()})</td>
+          <td class="mono">${dec.risk_pct}% vs ${dec.cost_pct}%<br/><span class="small">VaR: ₹${Number(dec.var_95_inr||0).toLocaleString("en-IN")}</span></td>
+          <td class="mono">${dec.forward_rate?'₹'+dec.forward_rate:'HOLD'}<br/><span class="small">Carry: ₹${Number(dec.fwd_cost_inr||0).toLocaleString("en-IN")}${dec.roll_cost_inr?` + Roll ₹${dec.roll_cost_inr}`:''}</span></td>
+          <td>${dec.reason}<br/>${evLinks}</td>
+        </tr>`;
+      }).join("");
+
+      document.getElementById("altContainer").innerHTML = Object.entries(d.alternatives || {}).map(([invId, alt]) => {
+        if (alt.status === "SKIPPED") return "";
+        const makers = (alt.makers || []).map(mk => `
+          <div style="background:var(--panel2);padding:12px;border-radius:8px;margin-top:8px;border:1px solid var(--border);">
+            <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+              <div><strong>${mk.name}</strong> ${pill('MAKER · '+mk.headcount+' emp','green')} <span class="small mono">ID:${mk.crustdata_company_id} · ${mk.hq}</span></div>
+              <div>${pill(mk.price_status,'amber')} <span class="mono small">Target &lt;= ₹${Number(alt.break_even_inr).toLocaleString("en-IN")}/unit</span></div>
+            </div>
+            <div class="small" style="margin:6px 0;">${mk.classification_evidence}</div>
+            <details><summary style="cursor:pointer;color:#60a5fa;font-size:12px;">View Drafted RFQ Email (Team Inbox)</summary><pre class="rfq">${mk.rfq_draft}</pre></details>
+          </div>`).join("");
+        const traders = (alt.traders_excluded || []).map(tr => `<div class="small" style="margin-top:6px;">${pill('TRADER EXCLUDED','red')} <strong>${tr.name}</strong> — ${tr.classification_evidence}</div>`).join("");
+        return `<div class="card"><h2><span>${invId} — ${alt.part_description}</span>${pill('Domestic Break-Even <= ₹'+Number(alt.break_even_inr).toLocaleString('en-IN')+'/unit','green')}</h2><div class="small">Hedged Landed Import Cost: <strong class="mono">₹${Number(alt.landed_import_inr).toLocaleString('en-IN')}/unit</strong></div>${makers}${traders}</div>`;
+      }).join("") || '<div class="card small">No hedged import invoices eligible for domestic substitution in this run.</div>';
+
+      renderOutbox(d.outbox || []);
+      renderEvidence(d.evidence || []);
+      renderCost(d.cost_ledger);
+    }
+
+    function renderOutbox(items) {
+      document.getElementById("tbOut").innerHTML = items.map(o => {
+        const p = o.payload_obj || {};
+        const col = (o.state==='paid'||o.state==='sent') ? 'green' : (o.state==='held' ? 'red' : 'blue');
+        let btns = `<span class="small">Blocked (${p.held_reason||'Held'})</span>`;
+        if (o.state === "drafted") {
+          btns = `<button class="primary" onclick="actOutbox('${o.idem_key}')">Approve &amp; Execute</button>`;
+        } else if (o.state === "approved") {
+          btns = `<button class="success" onclick="actOutbox('${o.idem_key}')">Complete Execution</button>`;
+        } else if (o.state === "paid" || o.state === "sent") {
+          btns = `<span class="pill green">Executed Once</span>`;
+        }
+        return `<tr>
+          <td class="mono">${o.kind.toUpperCase()}</td>
+          <td><strong>${p.title||o.kind}</strong><br/><span class="small mono">Invoice: ${o.invoice_id}</span></td>
+          <td class="mono">₹${Number(p.inr_value||0).toLocaleString("en-IN")}</td>
+          <td>${pill(o.state.toUpperCase(), col)}</td>
+          <td class="mono small">${o.idem_key}<br/>${o.external_ref?'<strong style="color:#34d399;">'+o.external_ref+'</strong>':''}</td>
+          <td>${btns}</td>
+        </tr>`;
+      }).join("");
+    }
+
+    async function actOutbox(key) {
+      const sec = document.getElementById("secondApprover").value.trim() || null;
+      const r = await fetch(`/api/outbox/${key}/approve-and-execute`, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ approver: "CFO (Live Sign-Off)", second_approver: sec }),
+      });
+      const d = await r.json();
+      if (!r.ok) return alert(d.detail || "Action blocked");
+      if (d.already_executed) {
+        alert(`IDEMPOTENCY PROTECTED: ${d.external_ref} was already executed. Zero duplicate payout.`);
+      }
+      if (currentRunId) {
+        const ob = await (await fetch(`/api/outbox/${currentRunId}`)).json();
+        renderOutbox(ob.outbox || []);
+      }
+    }
+
+    function renderEvidence(items) {
+      document.getElementById("tbEv").innerHTML = items.map(e => `<tr><td class="mono">#${e.id}</td><td><strong>${e.source}</strong><br/><span class="small mono">${e.field_path}</span></td><td>${e.value}<br/><span class="small mono">${e.record_date}</span></td></tr>`).join("");
+    }
+
+    function renderCost(c) {
+      if (!c) return;
+      document.getElementById("tbCost").innerHTML = (c.items || []).map(x => `<tr><td class="mono small">${x.endpoint}</td><td class="mono">${x.credits}</td><td class="mono">₹${Number(x.inr_cost).toFixed(2)}</td><td class="mono small">${x.at}</td></tr>`).join("");
+    }
+
+    async function loadBacktest() {
+      const bt = await (await fetch("/api/backtest")).json();
+      document.getElementById("btHeadline").innerHTML = `<strong>${bt.date_range} (${bt.monthly_windows} monthly $100k invoices, spot ₹${bt.spot_start} → ₹${bt.spot_end}):</strong> ${bt.headline}`;
+      document.getElementById("tbBt").innerHTML = Object.values(bt.strategies || {}).map(s => `
+        <tr><td><strong>${s.name}</strong></td><td class="mono">₹${s.mean_landed_rate}</td><td class="mono">₹${s.worst_month_overrun_inr_lakh}L</td><td class="mono">₹${s.cvar_95_overrun_inr_lakh}L</td><td class="mono">${s.avg_hedging_cost_paise_per_usd}p</td><td class="mono" style="color:#34d399;">${s.worst_month_cut_vs_never_pct}%</td></tr>
+      `).join("");
+      document.getElementById("btLimits").innerHTML = (bt.assumptions_and_limits || []).map(a => `<li>${a}</li>`).join("");
+      const pts = bt.daily_spot_sample || [];
+      if (pts.length > 1) {
+        const w = 520, h = 210, pad = 26, vals = pts.map(p => p.rate);
+        const minV = Math.min(...vals)-0.5, maxV = Math.max(...vals)+0.5;
+        const poly = pts.map((p,i) => `${(pad+(i/(pts.length-1))*(w-2*pad)).toFixed(1)},${(h-pad-((p.rate-minV)/(maxV-minV))*(h-2*pad)).toFixed(1)}`).join(" ");
+        document.getElementById("btChart").innerHTML = `<svg viewBox="0 0 ${w} ${h}" style="width:100%;"><polyline fill="none" stroke="#3b82f6" stroke-width="2.4" points="${poly}" /><text x="${pad}" y="18" fill="#93a3bc" font-size="11" font-family="monospace">Peak: ₹${Math.max(...vals).toFixed(2)} (+${bt.inr_depreciation_pct}%)</text><text x="${pad}" y="${h-6}" fill="#93a3bc" font-size="11" font-family="monospace">${pts[0].date} (₹${vals[0].toFixed(2)}) → ${pts[pts.length-1].date} (₹${vals[vals.length-1].toFixed(2)})</text></svg>`;
+      }
+    }
+
+    loadHealth();
+    loadBacktest();
+    loadLatestRun();
+  </script>
+</body>
+</html>

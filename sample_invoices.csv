@@ -1,0 +1,10 @@
+invoice_id,doc_type,supplier_raw,supplier_domain,currency,amount_raw,quantity_units,part_description,domestic_query,due_date,previous_due_date,duty_pct,freight_pct,bank_change_sender,bank_change_email
+INV-2026-401,confirmed,SKF GmbH,skf.com,USD,"200,000",400,Precision Industrial Ball Bearings (6205-2RS),precision industrial ball bearings manufacturer,2027-01-21,,7.5,3.2,,
+INV-2026-401-DUP,confirmed,SKF Gmbh.,skf.com,USD,"200,000",400,Precision Industrial Ball Bearings (6205-2RS),precision industrial ball bearings manufacturer,2027-01-21,,7.5,3.2,,
+INV-2026-402,confirmed,Schaeffler Global Lookalike Trading,,USD,55000,150,Tapered Roller Bearings,bearings manufacturer,2027-01-18,,7.5,3.2,,
+PO-2026-403,forecast,Timken Company,timken.com,USD,"USD 1.2 lakh",240,Heavy Duty Cylindrical Bearings,industrial bearings manufacturer,2027-01-15,,7.5,3.2,,
+INV-2026-404,confirmed,Carrier Global,carrier.com,USD,90000,30,Cold-Chain Reefer Compressors,commercial refrigeration compressor manufacturer,2027-02-05,2026-12-20,7.5,3.2,,
+INV-2026-405,confirmed,Danfoss,danfoss.com,EUR,35000,250,Cold-Storage Expansion Valves,industrial valves manufacturer,2027-01-10,,7.5,3.0,,
+INV-2026-406,confirmed,NSK Ltd.,nsk.com,USD,42000,100,Linear Motion Guides,precision linear motion bearings manufacturer,2026-11-10,,7.5,3.2,,
+INV-2026-407,confirmed,Honeywell,honeywell.com,USD,65000,200,Cold-Room IoT Sensors,industrial automation sensors manufacturer,,,7.5,3.0,,
+INV-2026-408,confirmed,Zebra Technologies,zebra.com,USD,38000,90,Warehouse RFID Scanners,barcode scanner industrial electronics manufacturer,2027-01-25,,10.0,2.5,Rahul Verma (External),rahul.verma@gmail.com
