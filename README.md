@@ -1,82 +1,155 @@
-# HedgeDesk — AI Treasury Analyst & Domestic Import-Substitution Desk
+# HedgeDesk
 
-> **One line:** *"HedgeDesk decides how much currency risk an importer should lock in, checks whether buying Indian is cheaper, and executes it with approval, with every number sourced and the policy backtested on real data."*
+HedgeDesk does the job of an FX advisor for an Indian importer. It looks at the dollar invoices a company has to pay, decides how much of each one to lock in with a bank forward, checks whether an Indian manufacturer could supply the same part for less, and queues the bank request and the payment for a person to approve.
 
----
+Built at ContextCon 05, BITS Pilani (Buying and paying track, with some Supply chain).
 
-## 1. The Service & Who Pays for It
-- **Service Replaced:** The external FX treasury advisor, bank RM advisory desk, or in-house junior treasury analyst that mid-size Indian importers pay to manage USD/INR exposure on supplier payables.
-- **Target Buyer:** CFO / Finance Head of mid-size Indian importers & 3PL importers (e.g., `BharatPrecision Components & 3PL Imports Pvt. Ltd.`).
-- **Pricing & Unit Economics (₹):**
-  - **Subscription Price:** `₹24,999 / month` (replacing `₹45,000+ / cycle` in manual FX advisory retainers).
-  - **Measured Cost per Job:** Tracked live in SQLite `cost_ledger` (Crustdata credits converted to ₹). Cached replays cost `₹0.00`; cold runs cost well under `₹100`, giving `>99%` software gross margin.
+## The job, and who pays for it today
 
-## 2. Input, Finished Result & Pass Mark
-- **Input:** Open purchase invoices and POs (`sample_invoices.csv` or uploaded CSV / JSON / plain-English ask) + `policy.yaml`.
-- **Finished Result:**
-  1. Deduped exposure book (`invoices` table, duplicates linked via `dup_of`, never deleted) with Crustdata supplier KYB & bank-change fraud checks.
-  2. Quantitative hedge ratio per invoice/bucket (`policy.py`), with risk%, cost%, policy clause, and clickable evidence IDs.
-  3. Verified Indian manufacturers (`MAKER` vs `TRADER` classified via `alternatives.py`), hedged landed import cost (`₹/unit`), domestic break-even threshold (`<= ₹X/unit`), `"cannot verify, RFQ drafted"`, and team-inbox RFQ drafts.
-  4. Outbox instructions (`actions.py`) behind human approval (and 2-person maker-checker above `₹1 Crore`): Bank FX Forward booking, Razorpay Test Payment ID (`pay_rzptest_...`), and Team-Inbox RFQs.
-  5. 18-month point-in-time historical backtest (`backtest.py`).
-- **Pass Mark:** `28 / 28` automated edge cases passing in [TESTS.md](file:///c:/Users/Arjun%20Kumar/OneDrive%20-%20BIRLA%20INSTITUTE%20and%20SCIENCE/Desktop/CONTEXTCON/TESTS.md) — zero double-hedges, zero double-payments across crashes (`Case 23*`, `Case 24*`), zero invented prices or rates (`cannot verify` on misses).
+A mid-size importer orders bearings from Germany for $200,000, payable in 60 days. If the rupee falls 2% in that time, the order costs ₹3.7 lakh more than planned. Big companies have treasury desks and board-approved hedging policies for this. Mid-size ones usually leave the exposure open, or go with whatever their bank's relationship manager suggests (and the RM earns on the forward spread).
 
-## 3. Data Sources
-- **Crustdata API (`https://api.crustdata.com`, `x-api-version: 2025-11-01`):**
-  - `/company/identify`: Entity resolution, lookalike detection, canonical `crustdata_company_id`.
-  - `/company/enrich`: Active status, founding year, 6-month headcount timeseries risk flag (`Case 13`).
-  - `/company/search`: Indian manufacturer discovery (`locations.country in ["India"]`, `headcount.total => 40`).
-  - `/person/search`: Bank-detail change sender verification (`Case 14*`).
-- **Official FX Reference Data:**
-  - **ECB / Frankfurter Daily USD/INR API** (`https://api.frankfurter.app`): Live spot reference + real daily historical series (`2025-04-30` to `2026-11-20`, ₹84.53 → ₹92.68).
-  - **FBIL / RBI Interbank Forward Premia Curve:** 1M / 3M / 6M annualized forward premia.
-- **Razorpay Test Mode (`actions.py`):** Idempotent receipt-checked payout order state machine (`Case 24*`).
+The people who do this job today are an in-house treasury analyst, an FX advisory firm on retainer, or the bank RM. The CFO or finance head pays for it out of the finance budget.
 
-## 4. How It's Built
-See [ARCHITECTURE.md](file:///c:/Users/Arjun%20Kumar/OneDrive - BIRLA INSTITUTE OF TECHNOLOGY and SCIENCE/Desktop/CONTEXTCON/ARCHITECTURE.md) for the full Mermaid diagram and 7-table SQLite schema (`hedgedesk.db`).
+**Our buyer:** the CFO of a mid-size Indian importer with regular USD payables. In the event, that's the client we were given, BharatPrecision Components & 3PL Imports.
 
-## 5. Approaches Considered, What Worked & What Didn't
-1. **LLM decides the hedge from the data (Rejected):** Non-reproducible—rewording an invoice changed outputs, and an LLM cannot be rigorously point-in-time backtested.
-2. **Forecast USD/INR and hedge selectively (Rejected):** Unreliable and violates corporate treasury mandates by turning risk management into FX speculation.
-3. **Rule-based layered policy with Risk vs. Cost inside board ranges (Chosen):** Pure deterministic functions (`policy.py`: `var_95`, `fwd_cost`, `hedge_ratio`, `decide`). Reproducible, auditable, maker-checker enforced, and backtestable with a strict point-in-time `assert`.
-4. **Options and zero-cost collars (Future Scope):** Deferred because verified live implied-volatility option surfaces are not consistently exposed on free public endpoints.
+**Price:** ₹24,999 a month per company. A typical advisory retainer is around ₹45,000 a cycle.
 
-### Backtest Results & Explicit Limits (`2025-04-30` to `2026-11-20`)
-> **Measured Headline:** *HedgeDesk cut the worst-month overrun by 58.7% vs never hedging, at 44.2 paise per dollar average cost, and was cheaper than always hedging 100% by 10.7 paise per dollar.*
+**Cost per job:** every Crustdata call is logged in the `cost_ledger` table with its credits and rupee cost. A re-run from cache costs nothing. A cold run of the 9-invoice demo book uses roughly 15–17 credits, about ₹80.
 
-**Disclosed Limits:** Synthetic monthly USD 100,000 payables (30/60/90-day rotating tenors), single currency pair (USD/INR), 18-month rupee depreciation regime, assumed 18 bps bank spread, and user-supplied duty/freight percentages.
+## Input
 
-## 6. How to Run From a Fresh Clone
+- A list of open invoices and purchase orders, as a CSV (see [`sample_invoices.csv`](sample_invoices.csv)) or a plain-English request typed into the web app, e.g. *"We owe SKF GmbH (skf.com) USD 200,000 for 400 bearings due 2027-01-21"*.
+- The company's hedging policy in [`policy.yaml`](policy.yaml): allowed hedge ranges by tenor, the approval threshold, freshness and sanity limits, and the per-run budget.
+
+## Finished result
+
+For each invoice, one of two things:
+
+1. **A hedge decision inside the policy range.** It shows the risk, the cost, the policy clause it follows and the evidence IDs behind every number, plus a drafted forward booking and payment waiting for approval.
+2. **A hold with a reason**, such as: duplicate invoice, lookalike supplier, supplier not found, bank-detail change request, missing due date, wrong currency, tenor over 6 months, or market data stale or missing.
+
+For the larger invoices it also returns a list of Indian manufacturers (found on Crustdata, with traders filtered out), the landed cost of importing the part, the domestic price that would beat it, and a draft RFQ. We don't know any domestic supplier's actual price, so the output always says "cannot verify, RFQ drafted" rather than guessing one.
+
+Payments, forward bookings and RFQs only go out after a person clicks Approve. Anything above ₹1 crore needs two approvers.
+
+## Pass mark
+
+A run passes if:
+
+- every invoice ends up either hedged within its policy range, or held with a stated reason;
+- no invoice is hedged or paid twice, including after the process is killed and restarted;
+- no rate, price or company fact appears without a source, and anything we can't source says "cannot verify".
+
+[`test_28_cases.py`](test_28_cases.py) checks this against 28 edge cases (duplicates, lookalikes, bad and stale market data, crashes mid-payment, out-of-credit errors, moved due dates and so on). All 28 pass; the latest run is in [`TESTS.md`](TESTS.md).
+
+## Data sources
+
+| Source | What we use it for | Called from |
+|---|---|---|
+| Crustdata `/company/identify` | Match a supplier name or domain to one company record; flag weak or lookalike matches | `book.py` |
+| Crustdata `/company/enrich` | Check the supplier is active; headcount trend and founding year for the risk flag | `book.py` |
+| Crustdata `/person/search` | Check whether someone asking to change a supplier's bank details actually works there | `book.py` |
+| Crustdata `/company/search` | Find Indian manufacturers of the same part (40+ employees) | `alternatives.py` |
+| Frankfurter (ECB reference rates) `api.frankfurter.app` | Live USD/INR spot, and the daily history used for volatility and the backtest | `sources.py` |
+
+All calls go through `sources.py`, which caches responses, retries on 429 and 5xx, stops cleanly on 402, checks the run budget before each paid call, and writes an evidence row (source, field, value, record date) for every fact.
+
+What isn't live yet:
+
+- **Forward premia (1M/3M/6M).** These are modelled from the 2025–26 FBIL range, adjusted for current volatility. They are not fetched from FBIL. We couldn't get a parseable FBIL feed working in time. This is the biggest gap between the code and the plan.
+- **Payments.** These go through a local stand-in that behaves like Razorpay test mode: it stores each payment against a receipt ID and looks it up before paying again. It doesn't call Razorpay's API yet.
+- **Bank forward requests and RFQs.** These are drafted and marked sent, but they go nowhere outside the app (in the event, only our team inbox would be allowed).
+
+## How it works
+
+The architecture diagram is in [`ARCHITECTURE.md`](ARCHITECTURE.md).
+
+A run goes through five steps. Each one saves its output to SQLite before the next one starts. If the process dies, re-running it with the same input skips every finished step, so nothing is fetched or proposed twice.
+
+1. **Book** (`book.py`). Parse the invoices, including messy amounts like "USD 1.2 lakh". Resolve each supplier on Crustdata, check any bank-change requests, link duplicates to the original, and bucket by due month and confirmed vs forecast.
+2. **Market** (`sources.py`). Get spot and 60-day volatility, and reject a spot outside the sanity bounds. If the live feed is down, fall back to the last published rate and say which date it's from. (The one-business-day staleness hold is in the policy and the tests, but the live path doesn't enforce it yet.)
+3. **Policy** (`policy.py`). For each invoice:
+   - 95% VaR = 1.645 × daily vol × √(trading days) × spot × amount
+   - Forward cost = premium × days/365 + bank spread
+   - Hedge more when cost is small relative to risk: `s = clip((risk/cost − 1)/(k − 1), 0, 1)`, then `ratio = low + s × (high − low)` within the policy range
+
+   High-risk suppliers get the bottom of the range. Forecast POs get a lower range than confirmed invoices. This file does no I/O, so the same input always gives the same answer.
+4. **Alternatives** (`alternatives.py`). Search for Indian makers, drop traders, then compute the landed import cost and the break-even domestic price.
+5. **Outbox** (`actions.py`). Propose the forward, the payment and the RFQ, each with a key built from its contents (e.g. invoice + amount + due date). Proposing the same thing again returns the existing row. Executing something already paid returns the stored payment ID.
+
+The web app (`app.py`, `static/index.html`) shows all of this in six tabs, with the evidence and cost ledgers, a policy editor, and toggles that simulate feed outages, stale data and out-of-credit errors.
+
+## Approaches we considered
+
+1. **Let an LLM decide the hedge.** Rejected. The same invoice worded differently gave different answers, and you can't backtest it honestly. There's no LLM anywhere in the decision path.
+2. **Forecast the rupee and hedge on the forecast.** Rejected. FX forecasts are unreliable, and hedging on a view is speculation, which most board policies forbid.
+3. **Fixed rules: hedge more when protection is cheap relative to risk, always inside board-set ranges.** This is what we built. It's reproducible, auditable, and it's how corporate treasury desks actually work.
+4. **Options and collars.** Deferred. They need implied-volatility data we couldn't source and verify.
+
+## Backtest
+
+`backtest.py` replays the policy on real daily USD/INR rates from 30 April 2025 to 20 November 2026, a period in which the rupee fell from 84.53 to 92.68. Every month it creates a $100,000 payable (tenors rotating 30, 60 and 90 days). It compares HedgeDesk with never hedging, always hedging 50% and always hedging 100%. An assert in `policy.decide()` stops any decision from seeing a rate dated after the decision day.
+
+| Strategy | Worst month overrun | Average overrun | Average hedging cost |
+|---|---|---|---|
+| Never hedge | ₹3.35 L | ₹1.27 L | 0 |
+| Always 50% | ₹2.00 L | ₹0.91 L | 27.4 paise/$ |
+| HedgeDesk | ₹1.38 L | ₹0.72 L | 44.2 paise/$ |
+| Always 100% | ₹0.87 L | ₹0.55 L | 54.9 paise/$ |
+
+HedgeDesk cut the worst-month overrun by 58.7% compared with never hedging, at 44.2 paise per dollar, which is 10.7 paise cheaper than hedging everything.
+
+Hedging 100% did better on risk in this period. That's expected when the rupee only moved one way, but it's still true, so we're saying it. With current volatility, our rule ends up at the top of each policy range every month.
+
+Limits:
+
+- the payables are synthetic;
+- it covers one currency pair and one 18-month stretch of rupee weakness;
+- the bank spread (18 bps) is assumed;
+- the forward premia are modelled, as noted above.
+
+## Running it
+
+Needs Python 3.11+ and a Crustdata API key.
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env   # add your CRUSTDATA_API_KEY
+cp .env.example .env        # then put your CRUSTDATA_API_KEY in .env
 ```
 
-### Run All 28 Automated Edge Cases (Generates `TESTS.md`)
+Web app, at http://127.0.0.1:8000:
+
+```bash
+uvicorn app:app --host 127.0.0.1 --port 8000
+```
+
+Click **Run Demo Story** to process `sample_invoices.csv`. If the server is killed and restarted, reloading the page resumes the last run from its checkpoint.
+
+Command line:
+
+```bash
+python run.py                 # press Ctrl+C partway through, then run it again
+python run.py my_invoices.csv
+```
+
+Edge-case suite (rewrites `TESTS.md`):
+
 ```bash
 python test_28_cases.py
 ```
 
-### Launch the Web Terminal
-```bash
-uvicorn app:app --host 127.0.0.1 --port 8000
-```
-Open `http://127.0.0.1:8000`, click **"Run Demo Story (sample_invoices.csv)"**, and follow the 2-minute script in the Context Doc.
+Clear previous runs but keep the API cache, so demos stay fast and free:
 
-### Run CLI & Demonstrate Real `Ctrl+C` Kill-on-Stage
-```bash
-python run.py
-# Press Ctrl+C mid-run to kill the process, then run again:
-python run.py
-```
-On restart, both `run.py` and the Web Terminal (`GET /api/latest-run`) automatically resume from the last committed SQLite `steps` checkpoint with zero duplicate API calls or duplicate payouts.
-
-### Reset Demo Runs (Preserves Crustdata Cache)
 ```bash
 python reset_demo.py
 ```
 
-## 7. What Is Left Out & Future Scope
-- **Left out for 7-hour scope:** FX options/collars, EUR/CNY active hedging (flagged out-of-scope today), and live bank FIX API connectivity.
-- **Future Scope:** Automated Tally/Zoho Books ERP sync, live RBI/FBIL MIFOR webhook ingestion, RazorpayX production payouts, and export receivable netting.
+If you edit `policy.yaml`, run `reset_demo.py` before re-running the same invoices. Otherwise the run resumes from its saved policy step and the change won't show up.
+
+## Left out, and what's next
+
+Not built in the 7 hours: options and collars, hedging currencies other than USD (EUR and others are flagged and left unhedged), a live FBIL premium feed, real Razorpay test-mode calls, and sending anything to a bank.
+
+Next: pull invoices from Tally or Zoho Books, net export receivables against payables, take duty rates from the tariff schedule instead of asking for them, and support more than one company with a shared market-data cache.
+
+HedgeDesk runs the customer's own policy and drafts requests for their own bank. It isn't investment advice, and final say stays with the company's finance team.
